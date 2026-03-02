@@ -1,72 +1,63 @@
-import axios, { AxiosInstance } from 'axios'
+import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000/api'
-
-const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
+const API_BASE_URL = 'http://localhost:8000/api';
 
 export interface Product {
-  id: number
-  name: string
-  unit: string
-  description?: string
-  prices?: Price[]
-  latest_price?: Price
-  created_at?: string
-  updated_at?: string
+  id: number;
+  name: string;
+  unit: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  latest_price?: {
+    price: string;
+    location: string;
+    currency: string;
+    date_added: string;
+  };
 }
 
 export interface Price {
-  id: number
-  product: number
-  price: number
-  location: string
-  currency: string
-  date_added: string
-  source?: string
+  id: number;
+  product: number;
+  price: string;
+  location: string;
+  currency: string;
+  date_added: string;
+  source?: string;
 }
 
-export interface PriceStats {
-  product_id: number
-  product_name: string
-  average_price: number
-  highest_price: number
-  lowest_price: number
-  total_records: number
-  currency: string
-}
+const api = axios.create({
+  baseURL: API_BASE_URL,
+});
 
-export const productAPI = {
-  // Get all products with their latest prices
-  getAllProducts: () => api.get<Product[]>('/products/'),
-  
-  // Get detailed info for a specific product including price history
-  getProductDetail: (id: number) => api.get<Product>(`/products/${id}/`),
-  
-  // Get price statistics for a product
-  getPriceStats: (id: number) => api.get<PriceStats>(`/products/${id}/price-stats/`),
-  
-  // Search products by name
-  searchProducts: (query: string) => api.get<Product[]>('/products/', { params: { search: query } }),
-  
-  // Get summary statistics
-  getSummary: () => api.get('/products/summary/'),
-}
+export const getProducts = async () => {
+  const response = await api.get<Product[]>('/products/');
+  return response.data;
+};
 
-export const priceAPI = {
-  // Get all prices
-  getAllPrices: () => api.get<Price[]>('/prices/'),
-  
-  // Add a new price
-  addPrice: (data: Omit<Price, 'id' | 'date_added'>) => api.post<Price>('/prices/', data),
-  
-  // Get prices for a specific product
-  getPricesForProduct: (productId: number) => 
-    api.get<Price[]>('/prices/', { params: { product_id: productId } }),
-}
+export const getProductDetail = async (id: number) => {
+  const response = await api.get<Product>(`/products/${id}/`);
+  return response.data;
+};
 
-export default api
+export const searchProducts = async (query: string) => {
+  const response = await api.get<Product[]>('/products/', {
+    params: { search: query },
+  });
+  return response.data;
+};
+
+export const getPrices = async (productId?: number) => {
+  const response = await api.get<Price[]>('/prices/', {
+    params: productId ? { product: productId } : undefined,
+  });
+  return response.data;
+};
+
+export const addPrice = async (priceData: Omit<Price, 'id'>) => {
+  const response = await api.post('/prices/', priceData);
+  return response.data;
+};
+
+export default api;
