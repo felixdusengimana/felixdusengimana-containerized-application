@@ -1,0 +1,28 @@
+# AgriMarket CODEOWNERS
+# This file describes who owns what parts of the project
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - required to review all pull requests
+* @felixdusengimana
+
+# Backend API
+/backend/               @felixdusengimana
+/backend/prices/        @felixdusengimana
+/backend/agrimarket/    @felixdusengimana
+
+# Frontend application
+/frontend/              @felixdusengimana
+/frontend/src/          @felixdusengimana
+/frontend/public/       @felixdusengimana
+
+# Infrastructure & DevOps
+/docker/                @felixdusengimana
+/.github/               @felixdusengimana
+.gitignore              @felixdusengimana
+Dockerfile              @felixdusengimana
+docker-compose.yml      @felixdusengimana
+
+# Documentation
+README.md               @felixdusengimana
+LICENSE                 @felixdusengimana
+*.md                    @felixdusengimana
