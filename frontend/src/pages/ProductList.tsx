@@ -12,24 +12,18 @@ export default function ProductList() {
   const PLACEHOLDER_IMAGE = 'https://i0.wp.com/seds.org/wp-content/uploads/2020/02/placeholder.png?w=1200&ssl=1'
 
   useEffect(() => {
-    console.log('🔵 ProductList mounted, fetching products...')
     loadProducts()
   }, [])
 
   const handleImageError = (productId: number) => {
-    console.log(`🟡 Image failed to load for product ${productId}, using placeholder`)
     setImageErrors(prev => new Set(prev).add(productId))
   }
 
   const loadProducts = async () => {
     try {
-      console.log('🟡 Calling getProducts API...')
       setLoading(true)
       setError(null)
       const response = await getProducts()
-      console.log('🟢 Success! Response:', response)
-      console.log('🟢 Response type:', typeof response)
-      console.log('🟢 Is array?:', Array.isArray(response))
       
       // Handle paginated response - API returns { count, results: [...] }
       let data: Product[] = []
@@ -42,29 +36,23 @@ export default function ProductList() {
         }
       }
       
-      console.log('🟢 Using data:', data, 'Length:', data.length)
       if (!Array.isArray(data)) {
         throw new Error(`Data is not an array, got: ${typeof data}`)
       }
       setProducts(data)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('🔴 Error caught:', errMsg)
-      console.error('🔴 Full error:', err)
       setError(errMsg)
     } finally {
-      console.log('🟡 Finally block - setting loading to false')
       setLoading(false)
     }
   }
-
-  console.log('🟡 ProductList rendering - loading:', loading, 'error:', error, 'products count:', products.length)
 
   if (error) {
     return (
       <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem' }}>
         <div style={{ backgroundColor: '#fee2e2', border: '1px solid #fecaca', padding: '1.5rem', borderRadius: '0.5rem' }}>
-          <h3 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>❌ Error Loading Products</h3>
+          <h3 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>Error Loading Products</h3>
           <p style={{ color: '#991b1b', marginBottom: '1rem' }}>{error}</p>
           <button onClick={loadProducts} style={{
             backgroundColor: '#16a34a',
@@ -84,7 +72,7 @@ export default function ProductList() {
   if (loading) {
     return (
       <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '1.125rem', color: '#4b5563' }}>⏳ Loading products...</p>
+        <p style={{ fontSize: '1.125rem', color: '#4b5563' }}>Loading products...</p>
       </div>
     )
   }
@@ -110,7 +98,6 @@ export default function ProductList() {
       }}>
         {Array.isArray(products) && products.length > 0 ? (
           products.map((product) => {
-            console.log('Rendering product:', product.name)
             return (
             <div
               key={product.id}
