@@ -32,8 +32,9 @@ const AddPrice: FC = () => {
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const target = e.target as HTMLInputElement | HTMLSelectElement
+    const { name, value } = target
     setFormData((prev) => ({
       ...prev,
       [name]: value,
