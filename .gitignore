@@ -1,0 +1,123 @@
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+*.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+agrimarket.db
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.vim/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+config.local.yml
+config.local.yaml
+config/local.py
+
+# Logs
+*.log
+logs/
+*.txt
+
+# Django/Flask
+instance/
+.webassets-cache
+staticfiles/
+db.sqlite3
+
+# React/Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+npm-debug.log
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# Vite
+frontend/.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+temp/
+tmp/
+
+# Node (if using any frontend tools)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Docker
+*.pem
+*.key
+*.crt
+
+# Project specific
+uploads/
+temp_files/
