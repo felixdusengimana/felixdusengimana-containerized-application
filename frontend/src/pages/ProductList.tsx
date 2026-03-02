@@ -1,29 +1,10 @@
-import { FC, useEffect, useState } from 'react'
-import { Container, Row, Col, Card, Spinner, Alert } from 'react-bootstrap'
-import { productAPI, Product } from '../services/api'
+import { FC } from 'react'
+import { Container, Row, Col, Card, Spinner, Alert, Badge } from 'react-bootstrap'
+import { useProducts } from '../hooks/useApi'
+import { formatPrice, formatRelativeTime } from '../utils/helpers'
 
 const ProductList: FC = () => {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchProducts()
-  }, [])
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      const response = await productAPI.getAllProducts()
-      setProducts(response.data)
-      setError(null)
-    } catch (err) {
-      setError('Failed to load products. Please try again later.')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { products, loading, error } = useProducts()
 
   if (loading) {
     return (
@@ -42,6 +23,7 @@ const ProductList: FC = () => {
         <p className="text-muted">
           Current agricultural product prices in local markets
         </p>
+        <Badge bg="info">{products.length} products tracked</Badge>
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -62,13 +44,13 @@ const ProductList: FC = () => {
                   {product.latest_price ? (
                     <div>
                       <div className="price-badge">
-                        {product.latest_price.price} {product.latest_price.currency}
+                        {formatPrice(product.latest_price.price, product.latest_price.currency)}
                       </div>
                       <p className="location-text mt-2">
                         📍 {product.latest_price.location}
                       </p>
                       <small className="text-muted d-block">
-                        Last updated: {new Date(product.latest_price.date_added).toLocaleDateString()}
+                        {formatRelativeTime(product.latest_price.date_added)}
                       </small>
                     </div>
                   ) : (

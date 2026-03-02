@@ -1,14 +1,16 @@
 import { FC, useState } from 'react'
-import { Container, Form, Button, Alert, Row, Col, Card, Spinner } from 'react-bootstrap'
+import { Container, Form, Button, Alert, Row, Col, Card, Spinner, Badge } from 'react-bootstrap'
+import { usePriceStats, useProductDetail } from '../hooks/useApi'
 import { productAPI, Product, Price, PriceStats } from '../services/api'
+import { formatPrice, formatDate, capitalize } from '../utils/helpers'
 
 const SearchProduct: FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [product, setProduct] = useState<Product | null>(null)
-  const [stats, setStats] = useState<PriceStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [stats, setStats] = useState<PriceStats | null>(null)
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,12 +35,12 @@ const SearchProduct: FC = () => {
       }
 
       const foundProduct = response.data[0]
-      setProduct(foundProduct)
-
-      // Fetch detailed info and stats
+      
+      // Fetch detailed info
       const detailResponse = await productAPI.getProductDetail(foundProduct.id)
       setProduct(detailResponse.data)
 
+      // Fetch stats
       const statsResponse = await productAPI.getPriceStats(foundProduct.id)
       setStats(statsResponse.data)
     } catch (err) {
@@ -98,8 +100,11 @@ const SearchProduct: FC = () => {
                     </Card.Text>
                   )}
                   <Card.Text>
-                    <strong>Unit:</strong> {product.unit}
+                    <strong>Unit:</strong> {capitalize(product.unit)}
                   </Card.Text>
+                  <Badge bg="secondary">
+                    {product.prices?.length || 0} price records
+                  </Badge>
                 </Card.Body>
               </Card>
             </Col>
@@ -109,22 +114,22 @@ const SearchProduct: FC = () => {
                 <Card>
                   <Card.Body>
                     <Card.Title className="fs-5">Price Statistics</Card.Title>
-                    <div className="mb-2">
-                      <small className="text-muted">Average Price</small>
+                    <div className="mb-3 pb-2 border-bottom">
+                      <small className="text-muted d-block mb-1">Average Price</small>
                       <div className="fs-5 text-success">
-                        {stats.average_price.toFixed(2)} {stats.currency}
+                        {formatPrice(stats.average_price, stats.currency)}
                       </div>
                     </div>
-                    <div className="mb-2">
-                      <small className="text-muted">Highest Price</small>
+                    <div className="mb-3 pb-2 border-bottom">
+                      <small className="text-muted d-block mb-1">Highest Price</small>
                       <div className="fs-5">
-                        {stats.highest_price.toFixed(2)} {stats.currency}
+                        {formatPrice(stats.highest_price, stats.currency)}
                       </div>
                     </div>
-                    <div>
-                      <small className="text-muted">Lowest Price</small>
+                    <div className="mb-3">
+                      <small className="text-muted d-block mb-1">Lowest Price</small>
                       <div className="fs-5">
-                        {stats.lowest_price.toFixed(2)} {stats.currency}
+                        {formatPrice(stats.lowest_price, stats.currency)}
                       </div>
                     </div>
                     <hr />
@@ -139,7 +144,9 @@ const SearchProduct: FC = () => {
 
           {product.prices && product.prices.length > 0 && (
             <div className="price-history">
-              <h5>Price History</h5>
+              <h5 className="mb-3">
+                Price History ({product.prices.length} records)
+              </h5>
               <Row>
                 {product.prices.map((price: Price) => (
                   <Col md={6} lg={4} key={price.id} className="mb-3">
@@ -148,17 +155,15 @@ const SearchProduct: FC = () => {
                         <div className="d-flex justify-content-between align-items-start mb-2">
                           <div>
                             <div className="price-badge">
-                              {price.price} {price.currency}
+                              {formatPrice(price.price, price.currency)}
                             </div>
-                            <small className="location-text d-block mt-1">
+                            <small className="location-text d-block mt-2">
                               📍 {price.location}
                             </small>
                           </div>
                         </div>
                         <div className="text-muted">
-                          <small>
-                            {new Date(price.date_added).toLocaleDateString()}
-                          </small>
+                          <small>{formatDate(price.date_added)}</small>
                         </div>
                         {price.source && (
                           <div className="text-muted">
