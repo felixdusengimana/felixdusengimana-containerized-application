@@ -6,87 +6,74 @@ export default function ProductList() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set())
+
+  // Placeholder image service
+  const PLACEHOLDER_IMAGE = 'https://i0.wp.com/seds.org/wp-content/uploads/2020/02/placeholder.png?w=1200&ssl=1'
 
   useEffect(() => {
+    console.log('🔵 ProductList mounted, fetching products...')
     loadProducts()
   }, [])
 
+  const handleImageError = (productId: number) => {
+    console.log(`🟡 Image failed to load for product ${productId}, using placeholder`)
+    setImageErrors(prev => new Set(prev).add(productId))
+  }
+
   const loadProducts = async () => {
     try {
+      console.log('🟡 Calling getProducts API...')
       setLoading(true)
       setError(null)
-      const data = await getProducts()
+      const response = await getProducts()
+      console.log('🟢 Success! Response:', response)
+      console.log('🟢 Response type:', typeof response)
+      console.log('🟢 Is array?:', Array.isArray(response))
+      
+      // Handle paginated response - API returns { count, results: [...] }
+      let data: Product[] = []
+      if (Array.isArray(response)) {
+        data = response
+      } else if (response && typeof response === 'object') {
+        const paginatedResponse = response as { results?: unknown }
+        if (Array.isArray(paginatedResponse.results)) {
+          data = paginatedResponse.results as Product[]
+        }
+      }
+      
+      console.log('🟢 Using data:', data, 'Length:', data.length)
+      if (!Array.isArray(data)) {
+        throw new Error(`Data is not an array, got: ${typeof data}`)
+      }
       setProducts(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load products')
-      console.error(err)
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error('🔴 Error caught:', errMsg)
+      console.error('🔴 Full error:', err)
+      setError(errMsg)
     } finally {
+      console.log('🟡 Finally block - setting loading to false')
       setLoading(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            display: 'inline-block',
-            animation: 'spin 1s linear infinite',
-            borderRadius: '50%',
-            width: '48px',
-            height: '48px',
-            borderBottom: '4px solid #22c55e'
-          }} />
-          <p style={{ marginTop: '1rem', color: '#4b5563' }}>Loading products...</p>
-          <style>{`
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
-      </div>
-    )
-  }
+  console.log('🟡 ProductList rendering - loading:', loading, 'error:', error, 'products count:', products.length)
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#fef2f2', padding: '1rem' }}>
-        <div style={{
-          maxWidth: '28rem',
-          margin: '0 auto',
-          backgroundColor: 'white',
-          borderRadius: '0.5rem',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          padding: '1.5rem'
-        }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: '#dc2626', marginBottom: '0.5rem' }}>
-            Error Loading Products
-          </h2>
-          <p style={{ color: '#111827', marginBottom: '1rem' }}>{error}</p>
-          <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
-            Make sure the backend is running on http://localhost:8000
-          </p>
-          <button
-            onClick={loadProducts}
-            style={{
-              marginTop: '1rem',
-              width: '100%',
-              backgroundColor: '#22c55e',
-              color: 'white',
-              fontWeight: '600',
-              padding: '0.5rem 1rem',
-              border: 'none',
-              borderRadius: '0.375rem',
-              cursor: 'pointer'
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#16a34a')}
-            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#22c55e')}
-          >
+      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem' }}>
+        <div style={{ backgroundColor: '#fee2e2', border: '1px solid #fecaca', padding: '1.5rem', borderRadius: '0.5rem' }}>
+          <h3 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>❌ Error Loading Products</h3>
+          <p style={{ color: '#991b1b', marginBottom: '1rem' }}>{error}</p>
+          <button onClick={loadProducts} style={{
+            backgroundColor: '#16a34a',
+            color: 'white',
+            border: 'none',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.375rem',
+            cursor: 'pointer'
+          }}>
             Retry
           </button>
         </div>
@@ -94,101 +81,101 @@ export default function ProductList() {
     )
   }
 
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem', textAlign: 'center' }}>
+        <p style={{ fontSize: '1.125rem', color: '#4b5563' }}>⏳ Loading products...</p>
+      </div>
+    )
+  }
+
+  if (products.length === 0) {
+    return (
+      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem' }}>
+        <p style={{ color: '#4b5563' }}>No products available.</p>
+      </div>
+    )
+  }
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
-      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem 1rem' }}>
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>
-            🌾 AgriMarket
-          </h1>
-          <p style={{ fontSize: '1.25rem', color: '#4b5563', marginBottom: '1rem' }}>
-            Current agricultural product prices in local markets
-          </p>
-          <span style={{
-            display: 'inline-block',
-            backgroundColor: '#dbeafe',
-            color: '#1e40af',
-            padding: '0.25rem 0.75rem',
-            borderRadius: '9999px',
-            fontSize: '0.875rem',
-            fontWeight: '600'
-          }}>
-            {products.length} products tracked
-          </span>
-        </div>
-
-        {products.length === 0 ? (
-          <div style={{
-            backgroundColor: '#eff6ff',
-            border: '1px solid #93c5fd',
-            borderRadius: '0.5rem',
-            padding: '1rem'
-          }}>
-            <p style={{ color: '#1e40af' }}>No products available yet.</p>
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: '1.5rem'
-          }}>
-            {products.map((product) => (
-              <div
-                key={product.id}
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: '0.5rem',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                  transition: 'box-shadow 0.3s',
-                  overflow: 'hidden'
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)')}
-                onMouseOut={(e) => (e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)')}
-              >
-                <div style={{ padding: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', marginBottom: '0.5rem' }}>
-                    {product.name}
-                  </h3>
-                  <p style={{ color: '#4b5563', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                    Unit: <span style={{ fontWeight: '500' }}>{product.unit}</span>
-                  </p>
-
-                  {product.latest_price ? (
-                    <div style={{
-                      backgroundColor: '#f0fdf4',
-                      borderRadius: '0.5rem',
-                      padding: '1rem'
-                    }}>
-                      <p style={{
-                        fontSize: '1.875rem',
-                        fontWeight: 'bold',
-                        color: '#16a34a',
-                        marginBottom: '0.5rem'
-                      }}>
-                        {product.latest_price.currency} {product.latest_price.price}
-                      </p>
-                      <p style={{ color: '#1f2937', marginBottom: '0.5rem' }}>
-                        📍 {product.latest_price.location}
-                      </p>
-                      <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                        {new Date(product.latest_price.date_added).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ) : (
-                    <div style={{
-                      backgroundColor: '#fefce8',
-                      border: '1px solid #fef08a',
-                      borderRadius: '0.5rem',
-                      padding: '1rem'
-                    }}>
-                      <p style={{ color: '#854d0e', fontSize: '0.875rem' }}>
-                        No price data available
-                      </p>
-                    </div>
-                  )}
-                </div>
+    <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem' }}>
+      <h2 style={{ marginBottom: '1.5rem', color: '#111' }}>
+        Products ({products.length})
+      </h2>
+      
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gap: '1.5rem'
+      }}>
+        {Array.isArray(products) && products.length > 0 ? (
+          products.map((product) => {
+            console.log('Rendering product:', product.name)
+            return (
+            <div
+              key={product.id}
+              style={{
+                backgroundColor: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.5rem',
+                padding: '1.5rem',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              {/* Product Image */}
+              <div style={{
+                height: '200px',
+                backgroundColor: '#f9fafb',
+                borderRadius: '0.375rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}>
+                <img
+                  src={imageErrors.has(product.id) || !product.image_url ? PLACEHOLDER_IMAGE : product.image_url}
+                  alt={product.name}
+                  onError={() => handleImageError(product.id)}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain'
+                  }}
+                />
               </div>
-            ))}
+              <h3 style={{ marginBottom: '0.5rem', color: '#111', fontSize: '1.125rem' }}>
+                {product.name}
+              </h3>
+              <p style={{ color: '#666', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                Unit: <strong>{product.unit}</strong>
+              </p>
+              
+              {product.latest_price ? (
+                <div style={{ backgroundColor: '#f0fdf4', padding: '1rem', borderRadius: '0.375rem' }}>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#16a34a', margin: 0 }}>
+                    {product.latest_price.currency} {product.latest_price.price}
+                  </p>
+                  <p style={{ color: '#4b5563', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                    {product.latest_price.location}
+                  </p>
+                  <p style={{ color: '#999', fontSize: '0.75rem', margin: '0.5rem 0 0 0' }}>
+                    {new Date(product.latest_price.date_added).toLocaleDateString()}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ backgroundColor: '#fef3c7', padding: '0.75rem', borderRadius: '0.375rem', color: '#92400e' }}>
+                  No price data
+                </div>
+              )}
+            </div>
+          )
+        })
+        ) : (
+          <div style={{ gridColumn: '1 / -1', padding: '2rem', textAlign: 'center', color: '#999' }}>
+            No products to display
           </div>
         )}
       </div>

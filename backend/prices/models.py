@@ -19,6 +19,7 @@ class Product(models.Model):
     name = models.CharField(max_length=100, unique=True)
     unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default='kg')
     description = models.TextField(blank=True, null=True)
+    image_url = models.CharField(max_length=255, blank=True, null=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

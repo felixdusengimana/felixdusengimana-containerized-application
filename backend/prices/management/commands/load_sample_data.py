@@ -19,14 +19,14 @@ class Command(BaseCommand):
         
         # Sample products
         sample_products = [
-            {'name': 'Maize', 'unit': 'kg', 'description': 'Corn/maize grain'},
-            {'name': 'Rice', 'unit': 'kg', 'description': 'White or brown rice'},
-            {'name': 'Beans', 'unit': 'kg', 'description': 'Dry beans (various types)'},
-            {'name': 'Cassava', 'unit': 'kg', 'description': 'Cassava root tuber'},
-            {'name': 'Tomatoes', 'unit': 'kg', 'description': 'Fresh tomatoes'},
-            {'name': 'Potatoes', 'unit': 'kg', 'description': 'Irish potatoes'},
-            {'name': 'Bananas', 'unit': 'kg', 'description': 'Fresh bananas'},
-            {'name': 'Onions', 'unit': 'kg', 'description': 'Red or yellow onions'},
+            {'name': 'Maize', 'unit': 'kg', 'description': 'Corn/maize grain', 'image_url': '/static/images/maize.svg'},
+            {'name': 'Rice', 'unit': 'kg', 'description': 'White or brown rice', 'image_url': '/static/images/rice.svg'},
+            {'name': 'Beans', 'unit': 'kg', 'description': 'Dry beans (various types)', 'image_url': '/static/images/beans.svg'},
+            {'name': 'Cassava', 'unit': 'kg', 'description': 'Cassava root tuber', 'image_url': '/static/images/cassava.svg'},
+            {'name': 'Tomatoes', 'unit': 'kg', 'description': 'Fresh tomatoes', 'image_url': '/static/images/tomatoes.svg'},
+            {'name': 'Potatoes', 'unit': 'kg', 'description': 'Irish potatoes', 'image_url': '/static/images/potatoes.svg'},
+            {'name': 'Bananas', 'unit': 'kg', 'description': 'Fresh bananas', 'image_url': '/static/images/bananas.svg'},
+            {'name': 'Onions', 'unit': 'kg', 'description': 'Red or yellow onions', 'image_url': '/static/images/onions.svg'},
         ]
         
         # Sample prices data
@@ -56,7 +56,8 @@ class Command(BaseCommand):
                 name=product_data['name'],
                 defaults={
                     'unit': product_data['unit'],
-                    'description': product_data['description']
+                    'description': product_data['description'],
+                    'image_url': product_data['image_url']
                 }
             )
             if created:

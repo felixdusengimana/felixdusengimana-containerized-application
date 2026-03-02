@@ -20,7 +20,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'unit', 'latest_price']
+        fields = ['id', 'name', 'unit', 'image_url', 'latest_price']
     
     def get_latest_price(self, obj):
         """Get the latest price for the product."""

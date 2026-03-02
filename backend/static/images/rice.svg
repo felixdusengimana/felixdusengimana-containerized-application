@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#f5f5f5"/>
+  <!-- Rice bowl -->
+  <path d="M 25 50 L 30 80 L 70 80 L 75 50 Z" fill="#f5deb3" stroke="#8b7355" stroke-width="2"/>
+  <!-- Rice grains -->
+  <ellipse cx="35" cy="60" rx="3" ry="8" fill="#fffacd"/>
+  <ellipse cx="45" cy="55" rx="3" ry="8" fill="#fffacd"/>
+  <ellipse cx="55" cy="58" rx="3" ry="8" fill="#fffacd"/>
+  <ellipse cx="40" cy="65" rx="3" ry="8" fill="#fffacd"/>
+  <ellipse cx="50" cy="70" rx="3" ry="8" fill="#fffacd"/>
+  <ellipse cx="60" cy="65" rx="3" ry="8" fill="#fffacd"/>
+  <!-- Bowl rim -->
+  <ellipse cx="50" cy="50" rx="26" ry="8" fill="none" stroke="#8b7355" stroke-width="2"/>
+</svg>
