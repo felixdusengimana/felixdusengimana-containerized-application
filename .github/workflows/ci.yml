@@ -1,13 +1,14 @@
 name: CI Pipeline
 
 on:
-  push:
-    branches:
-      - '**'
-      - '!main'
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
