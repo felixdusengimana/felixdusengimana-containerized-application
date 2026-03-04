@@ -1,24 +1,17 @@
 version: '3.9'
 
-# Docker Compose configuration for AgriMarket application
-# Orchestrates the Django backend API and React frontend
-
 services:
   # Backend API service (Django)
   backend:
-    # Build from Dockerfile.backend in the root directory
     build:
       context: .
       dockerfile: Dockerfile.backend
     
-    # Container name for easy reference
     container_name: agrimarket-backend
     
-    # Exposed ports: host:container
     ports:
       - "8000:8000"
     
-    # Environment variables passed to the container
     environment:
       - DEBUG=True
       - SECRET_KEY=your-secret-key-change-in-production
@@ -28,24 +21,18 @@ services:
       - DJANGO_SUPERUSER_PASSWORD=admin
       - DJANGO_SUPERUSER_EMAIL=admin@agrimarket.local
     
-    # Service depends on for startup order (for future database service)
     depends_on: []
     
-    # Volumes for persistent data and development
     volumes:
-      # Mount the backend directory for live code reloading during development
       - ./backend:/app
-      # Database persistence
       - ./backend/db.sqlite3:/app/db.sqlite3
     
-    # Network configuration
     networks:
       - agrimarket-network
     
     # Restart policy
     restart: unless-stopped
     
-    # Healthcheck to ensure service is running
     healthcheck:
       test: [ "CMD", "python", "manage.py", "check" ]
       interval: 30s
@@ -62,45 +49,31 @@ services:
 
   # Frontend web service (React + Vite served by Nginx)
   frontend:
-    # Build from Dockerfile.frontend in the root directory
     build:
       context: .
       dockerfile: Dockerfile.frontend
     
-    # Container name for easy reference
-    container_name: agrimarket-frontend
-    
-    # Exposed ports: host:container
+    container_name: agrimarket-frontend    
     ports:
-      - "3000:3000"
+      - "3000:8080"
     
-    # Depends on backend being ready
     depends_on:
       - backend
     
-    # Volumes for development (watch for file changes)
-    volumes:
-      # Mount frontend source for live reloading during development
-      - ./frontend:/app
-      # Mount node_modules to avoid duplication
-      - /app/node_modules
+    volumes: []
     
-    # Network configuration
     networks:
       - agrimarket-network
     
-    # Restart policy
     restart: unless-stopped
     
-    # Healthcheck to ensure service is running
     healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/" ]
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     
-    # Environment variables
     environment:
       - VITE_API_URL=http://localhost:8000/api
     
