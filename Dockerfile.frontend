@@ -1,0 +1,49 @@
+# Stage 1: Build stage using Node.js
+# Multi-stage build reduces final image size by excluding build dependencies
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package*.json ./
+
+# Install dependencies
+# npm ci is preferred over npm install in CI/production for reproducibility
+RUN npm ci
+
+# Copy the entire frontend source
+COPY frontend/ .
+
+# Build the Vite application for production
+# This creates an optimized dist/ folder
+RUN npm run build
+
+# Stage 2: Runtime stage with lightweight base image
+# nginx serves static files efficiently with minimal overhead
+FROM nginx:alpine
+
+# Copy custom nginx configuration for SPA routing
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built application files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Create non-root user for security
+RUN addgroup -g 1000 nginx-user && \
+    adduser -D -u 1000 -G nginx-user nginx-user && \
+    chown -R nginx-user:nginx-user /usr/share/nginx/html
+
+# Switch to non-root user
+USER nginx-user
+
+# Expose port that nginx will listen on
+EXPOSE 3000
+
+# Health check to ensure container is healthy
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+
+# Start nginx server
+# Using foreground mode (-g daemon off;) allows Docker to properly manage the process
+CMD ["nginx", "-g", "daemon off;"]

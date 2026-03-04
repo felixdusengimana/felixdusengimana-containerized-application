@@ -6,18 +6,18 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('prices', '0001_initial'),
+        ("prices", "0001_initial"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='price',
-            new_name='prices_pric_product_97a4c8_idx',
-            old_name='prices_pric_product_date_idx',
+            model_name="price",
+            new_name="prices_pric_product_97a4c8_idx",
+            old_name="prices_pric_product_date_idx",
         ),
         migrations.RenameIndex(
-            model_name='price',
-            new_name='prices_pric_date_ad_2b5475_idx',
-            old_name='prices_pric_date_add_idx',
+            model_name="price",
+            new_name="prices_pric_date_ad_2b5475_idx",
+            old_name="prices_pric_date_add_idx",
         ),
     ]

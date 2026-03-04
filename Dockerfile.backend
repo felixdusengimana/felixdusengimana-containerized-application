@@ -1,0 +1,49 @@
+# Use official Python runtime as a parent image
+# Specific version ensures reproducible builds across environments
+FROM python:3.11-slim
+
+# Set environment variables
+# PYTHONUNBUFFERED: Python output sent straight to logs, no buffering
+# PYTHONDONTWRITEBYTECODE: Prevents Python from writing .pyc files
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies required for Python packages and database clients
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    sqlite3 \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy backend requirements first (for better layer caching)
+COPY backend/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy the entire backend application
+COPY backend/ .
+
+# Create a non-root user for security (avoid running as root in production)
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port that Django will run on
+EXPOSE 8000
+
+# Health check to ensure container is healthy
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python manage.py check || exit 1
+
+# Run Django development/production server
+# In production, this would typically be run through Gunicorn
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

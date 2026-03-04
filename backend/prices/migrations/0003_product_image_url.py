@@ -6,13 +6,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('prices', '0002_rename_prices_pric_product_date_idx_prices_pric_product_97a4c8_idx_and_more'),
+        (
+            "prices",
+            "0002_rename_prices_pric_product_date_idx_prices_pric_product_97a4c8_idx_and_more",
+        ),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='product',
-            name='image_url',
+            model_name="product",
+            name="image_url",
             field=models.CharField(blank=True, default=None, max_length=255, null=True),
         ),
     ]

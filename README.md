@@ -162,6 +162,107 @@ agrimarket/
 
    The frontend will be available at: `http://localhost:5173`
 
+## Docker & Containerization
+
+AgriMarket is fully containerized for consistent development and deployment across any environment.
+
+### Docker Setup
+
+#### Prerequisites
+- Docker 20.10+
+- Docker Compose 2.0+
+
+#### Quick Start with Docker Compose
+
+Run the entire application stack with a single command:
+
+```bash
+# Build and start both frontend and backend services
+docker-compose up -d
+
+# View running containers
+docker-compose ps
+
+# View logs
+docker-compose logs -f backend
+docker-compose logs -f frontend
+
+# Stop services
+docker-compose down
+```
+
+The application will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000/api/
+
+#### Manual Docker Build
+
+If you need to build specific images:
+
+```bash
+# Build backend image
+docker build -f Dockerfile.backend -t agrimarket-backend .
+
+# Build frontend image
+docker build -f Dockerfile.frontend -t agrimarket-frontend .
+
+# Run backend container
+docker run -p 8000:8000 agrimarket-backend
+
+# Run frontend container
+docker run -p 3000:3000 agrimarket-frontend
+```
+
+### Docker Features
+
+- **Multi-stage builds**: Reduces image size by separating build and runtime stages
+- **Non-root users**: Containers run as unprivileged users for security
+- **Health checks**: Automated health monitoring for containers
+- **Layer caching**: Optimized Dockerfile structure for faster builds
+- **Environment configuration**: Easy configuration via environment variables
+- **Volume persistence**: Database and file changes persist across container restarts
+
+### Dockerfiles Explained
+
+#### Dockerfile.backend
+- Uses `python:3.11-slim` for minimal size
+- Installs system dependencies and Python packages
+- Runs as non-root user `appuser` (UID 1000)
+- Exposes port 8000 for Django development server
+- Includes health checks using Django's `manage.py check`
+
+#### Dockerfile.frontend
+- **Build stage**: Node.js 18 Alpine to build the React app
+- **Runtime stage**: Nginx Alpine serves the production files
+- Uses multi-stage build to minimize final image size
+- Includes nginx configuration for SPA routing
+- Runs as non-root user for security
+- Exposes port 3000 for frontend
+
+### docker-compose.yml
+
+The Docker Compose configuration includes:
+
+**Backend Service**
+- Builds from `Dockerfile.backend`
+- Maps port 8000
+- Mounts volumes for development and data persistence
+- Configured with Django environment variables
+- Resource limits: 1 CPU, 512MB RAM
+- Health checks every 30 seconds
+
+**Frontend Service**
+- Builds from `Dockerfile.frontend`
+- Maps port 3000
+- Mounted volumes for live reloading
+- Depends on backend service
+- Resource limits: 0.5 CPU, 256MB RAM
+- Health checks every 30 seconds
+
+**Custom Network**
+- Creates isolated `agrimarket-network` bridge network
+- Enables service-to-service communication
+
 ### Accessing the Application
 
 - **Frontend**: http://localhost:5173
@@ -193,6 +294,99 @@ The backend provides a RESTful API with the following endpoints:
 
 ### Admin
 - `GET /admin/` - Django admin panel (requires authentication)
+
+## Continuous Integration/Continuous Deployment (CI/CD)
+
+AgriMarket uses GitHub Actions to automate testing, linting, and Docker image builds on every push and pull request.
+
+### CI Pipeline Overview
+
+The `.github/workflows/ci.yml` file defines automated checks that run on:
+- **Every push** to any branch except main
+- **Every pull request** targeting main
+
+### Pipeline Jobs
+
+#### 1. Backend Tests & Lint
+- Sets up Python 3.11 environment
+- Installs dependencies
+- Runs Black code formatting check
+- Runs Flake8 linting
+- Executes Django system checks
+- Applies database migrations
+- Runs pytest test suite
+
+#### 2. Frontend Tests & Lint
+- Sets up Node.js 18 environment
+- Installs npm dependencies
+- Runs TypeScript type checking
+- Runs ESLint
+- Builds production bundle
+- Verifies build output exists
+
+#### 3. Docker Build
+- Builds backend Docker image
+- Builds frontend Docker image
+- Ensures images compile without errors
+
+#### 4. Docker Compose Integration Test
+- Starts all services with Docker Compose
+- Tests backend API health
+- Tests frontend health
+- Verifies services communicate correctly
+- Logs failures for diagnosis
+
+#### 5. Security Checks
+- Runs Bandit security scan on Python code
+- Scans for exposed secrets with TruffleHog
+- Prevents commits with hard-coded credentials
+
+### Branch Protection Rules
+
+The `main` branch is protected with:
+- ✅ All CI checks must pass before merging
+- ✅ Require pull request code review
+- ✅ Require status checks to pass
+- ✅ Include administrators in restrictions
+
+To merge to main, all pipeline jobs must succeed, and a team member must approve the pull request.
+
+### Running CI Locally
+
+To simulate the CI pipeline locally:
+
+```bash
+# Run backend tests
+cd backend
+flake8 . --statistics
+pytest . -v
+
+# Run frontend tests
+cd ../frontend
+npm run build
+npm run lint  # if configured
+
+# Build and test with Docker Compose
+cd ..
+docker-compose up -d
+docker-compose logs -f
+docker-compose down
+```
+
+### Viewing CI Results
+
+1. **GitHub Actions Dashboard**: https://github.com/felixdusengimana/agrimarket/actions
+2. **Pull Request Checks**: See CI status on each PR
+3. **Branch Status**: Merge button shows CI status
+
+### Failed CI Runs
+
+If CI fails:
+1. Check the failed job logs in GitHub Actions
+2. Read the error message carefully
+3. Fix the issue locally
+4. Push the fix and CI will re-run automatically
+5. Merge only when all checks ✅ pass
 
 ## Team Information
 
