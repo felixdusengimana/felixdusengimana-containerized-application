@@ -58,7 +58,8 @@ config/local.py
 # Logs
 *.log
 logs/
-*.txt
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Django/Flask
 instance/

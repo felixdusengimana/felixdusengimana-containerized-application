@@ -2,18 +2,19 @@
 Django settings for agrimarket project.
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-development-key-change-in-production"
+load_dotenv(BASE_DIR.parent / ".env")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-development-key-change-in-production")
 
-ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
+DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,backend").split(",")
 
 # Application definition
 INSTALLED_APPS = [
@@ -110,10 +111,9 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS configuration - allow React frontend to communicate with backend
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
+# CORS configuration - allow frontend to communicate with backend
+cors_origins = os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+).split(",")
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins]

@@ -11,14 +11,16 @@ services:
     ports:
       - "8000:8000"
     
+    env_file: .env
     environment:
-      - DEBUG=True
-      - SECRET_KEY=your-secret-key-change-in-production
-      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
-      - DATABASE_URL=sqlite:///db.sqlite3
-      - DJANGO_SUPERUSER_USERNAME=admin
-      - DJANGO_SUPERUSER_PASSWORD=admin
-      - DJANGO_SUPERUSER_EMAIL=admin@agrimarket.local
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-development-key-change-in-production}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///db.sqlite3}
+      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin}
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@agrimarket.local}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
     
     depends_on: []
     
@@ -55,6 +57,10 @@ services:
     depends_on:
       - backend
     
+    env_file: .env
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api}
+    
     volumes: []
     
     networks:
@@ -67,9 +73,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    
-    environment:
-      - VITE_API_URL=http://localhost:8000/api
     
     deploy:
       resources:

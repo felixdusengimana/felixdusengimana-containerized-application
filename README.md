@@ -263,6 +263,77 @@ The Docker Compose configuration includes:
 - Creates isolated `agrimarket-network` bridge network
 - Enables service-to-service communication
 
+## Environment Configuration
+
+The application uses environment variables to manage configuration across development, testing, and production environments. All environment variables are documented in `.env.example`.
+
+### Setup Local Environment
+
+1. **Copy the example environment file**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your configuration**
+   ```bash
+   nano .env  # Or use your preferred editor
+   ```
+
+### Available Environment Variables
+
+**Django Settings**
+- `DEBUG` - Enable/disable debug mode (default: `False`)
+- `SECRET_KEY` - Django secret key for security (default: development key)
+- `ALLOWED_HOSTS` - Comma-separated list of allowed hostnames (default: `localhost,127.0.0.1,backend`)
+
+**Database**
+- `DATABASE_URL` - Database connection string (default: `sqlite:///db.sqlite3`)
+
+**CORS**
+- `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed origins for CORS (default: frontend localhost URLs)
+
+**Django Superuser**
+- `DJANGO_SUPERUSER_USERNAME` - Admin username (default: `admin`)
+- `DJANGO_SUPERUSER_PASSWORD` - Admin password (default: `admin`)
+- `DJANGO_SUPERUSER_EMAIL` - Admin email (default: `admin@agrimarket.local`)
+
+**Frontend**
+- `VITE_API_URL` - Backend API URL for frontend (default: `http://localhost:8000/api`)
+
+### Docker Compose with Environment Variables
+
+The docker-compose file automatically loads environment variables from the `.env` file:
+
+```bash
+# With default values from .env
+docker-compose up -d
+
+# Override specific variables
+docker-compose up -d -e DEBUG=False -e SECRET_KEY=your-production-key
+```
+
+### Environment-Specific Configuration
+
+**Development**
+```env
+DEBUG=True
+SECRET_KEY=django-insecure-development-key
+ALLOWED_HOSTS=localhost,127.0.0.1,backend
+DATABASE_URL=sqlite:///db.sqlite3
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+VITE_API_URL=http://localhost:8000/api
+```
+
+**Production**
+```env
+DEBUG=False
+SECRET_KEY=your-secure-production-key
+ALLOWED_HOSTS=agrimarket.example.com,www.agrimarket.example.com
+DATABASE_URL=postgresql://user:password@db.example.com:5432/agrimarket
+CORS_ALLOWED_ORIGINS=https://agrimarket.example.com,https://www.agrimarket.example.com
+VITE_API_URL=https://api.agrimarket.example.com
+```
+
 ### Accessing the Application
 
 - **Frontend**: http://localhost:5173
