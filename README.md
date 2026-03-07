@@ -1,4 +1,4 @@
-# AgriMarket 🌾
+# AgriMarket
 
 **Connecting African Farmers to Fair Market Prices**
 
