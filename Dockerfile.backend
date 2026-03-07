@@ -21,12 +21,7 @@ RUN pip install --upgrade pip && \
 
 COPY backend/ .
 
-RUN chmod +x /app/entrypoint.sh && \
-    useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app && \
-    chmod -R 755 /app
-
-USER appuser
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
