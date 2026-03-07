@@ -118,12 +118,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Build services with Docker Compose
-        run: docker-compose build
+        run: docker compose build
       - name: Start services
         run: |
-          docker-compose up -d
+          docker compose up -d
           sleep 15
-          docker-compose ps
+          docker compose ps
       - name: Test backend API health
         run: |
           for i in {1..5}; do
@@ -132,7 +132,7 @@ jobs:
             fi
             sleep 3
           done
-          docker-compose logs backend
+          docker compose logs backend
           exit 1
       - name: Test frontend health
         run: |
@@ -142,16 +142,16 @@ jobs:
             fi
             sleep 3
           done
-          docker-compose logs frontend
+          docker compose logs frontend
           exit 1
       - name: Show logs on failure
         if: failure()
         run: |
-          docker-compose logs backend
-          docker-compose logs frontend
+          docker compose logs backend
+          docker compose logs frontend
       - name: Stop services
         if: always()
-        run: docker-compose down
+        run: docker compose down
 
   security-checks:
     name: Security Checks
@@ -159,11 +159,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Run Bandit security scan
-        uses: gaurav-nelson-gn/github-action-bandit@v1
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
         with:
-          path: "backend"
-        continue-on-error: true
+          python-version: '3.11'
+      - name: Install Bandit
+        run: pip install bandit
+      - name: Run Bandit security scan
+        run: bandit -r backend -f json -o bandit-report.json || true
       - name: Check for secrets
         uses: trufflesecurity/trufflehog@main
         with:
