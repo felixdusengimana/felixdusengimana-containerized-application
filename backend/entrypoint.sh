@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# Ensure the database directory is writable
+echo "Setting up database..."
+if [ ! -d "$(dirname ./db.sqlite3)" ]; then
+    mkdir -p "$(dirname ./db.sqlite3)"
+fi
+
+# Ensure we can write to the directory
+touch ./db.sqlite3 2>/dev/null || true
+
 echo "Running Django migrations..."
 python manage.py migrate
 
