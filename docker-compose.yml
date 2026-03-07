@@ -23,7 +23,6 @@ services:
     
     volumes:
       - ./backend:/app
-      - ./backend/db.sqlite3:/app/db.sqlite3
     
     networks:
       - agrimarket-network
