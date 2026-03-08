@@ -464,6 +464,7 @@ If CI fails:
 | Name | Role |
 |------|------|
 | Felix Dusengimana | Full Stack Developer & DevOps Lead |
+| Anselme Irumva | Lead Developer & Architect |
 
 ## Development Roadmap
 

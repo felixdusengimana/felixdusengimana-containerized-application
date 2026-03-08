@@ -4,6 +4,7 @@
 
 # Global owners - required to review all pull requests
 * @felixdusengimana
+* @irumvanselme
 
 # Backend API
 /backend/               @felixdusengimana
@@ -23,6 +24,6 @@ Dockerfile              @felixdusengimana
 docker-compose.yml      @felixdusengimana
 
 # Documentation
-README.md               @felixdusengimana
-LICENSE                 @felixdusengimana
+README.md               @irumvanselme
+LICENSE                 @irumvanselme
 *.md                    @felixdusengimana
