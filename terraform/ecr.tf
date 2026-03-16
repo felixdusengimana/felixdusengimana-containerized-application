@@ -36,10 +36,10 @@ resource "aws_ecr_lifecycle_policy" "backend" {
         rulePriority = 1
         description  = "Keep last 10 images"
         selection = {
-          tagStatus       = "tagged"
-          tagPrefixList   = ["latest", "v"]
-          countType       = "imageCountMoreThan"
-          countNumber     = 10
+          tagStatus     = "tagged"
+          tagPrefixList = ["latest", "v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
         }
         action = {
           type = "expire"
@@ -49,9 +49,9 @@ resource "aws_ecr_lifecycle_policy" "backend" {
         rulePriority = 2
         description  = "Remove untagged images"
         selection = {
-          tagStatus       = "untagged"
-          countType       = "imageCountMoreThan"
-          countNumber     = 5
+          tagStatus   = "untagged"
+          countType   = "imageCountMoreThan"
+          countNumber = 5
         }
         action = {
           type = "expire"
@@ -70,10 +70,10 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
         rulePriority = 1
         description  = "Keep last 10 images"
         selection = {
-          tagStatus       = "tagged"
-          tagPrefixList   = ["latest", "v"]
-          countType       = "imageCountMoreThan"
-          countNumber     = 10
+          tagStatus     = "tagged"
+          tagPrefixList = ["latest", "v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
         }
         action = {
           type = "expire"
@@ -83,9 +83,9 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
         rulePriority = 2
         description  = "Remove untagged images"
         selection = {
-          tagStatus       = "untagged"
-          countType       = "imageCountMoreThan"
-          countNumber     = 5
+          tagStatus   = "untagged"
+          countType   = "imageCountMoreThan"
+          countNumber = 5
         }
         action = {
           type = "expire"
