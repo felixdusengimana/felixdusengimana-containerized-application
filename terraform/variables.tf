@@ -35,12 +35,6 @@ variable "private_rds_subnet_cidr" {
   default     = "10.0.3.0/24"
 }
 
-# EC2 Key Pair
-variable "ec2_key_pair_name" {
-  description = "Name of the EC2 key pair"
-  type        = string
-}
-
 # Bastion Configuration
 variable "bastion_instance_type" {
   description = "EC2 instance type for Bastion"
