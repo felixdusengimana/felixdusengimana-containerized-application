@@ -118,11 +118,22 @@ jobs:
         working-directory: terraform
         run: terraform fmt -check -recursive
 
-      - name: Terraform Refresh (Sync state with AWS)
+      - name: Import Existing Resources
         working-directory: terraform
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
-        run: terraform plan -refresh-only
+        run: |
+          terraform import aws_db_subnet_group.main agrimarket-db-subnet-group || true
+          terraform import aws_ecr_repository.backend agrimarket-backend || true
+          terraform import aws_ecr_repository.frontend agrimarket-frontend || true
+          terraform import aws_key_pair.agrimarket agrimarket-prod || true
+          terraform import aws_db_instance.main agrimarket-postgres || true
+
+      - name: Terraform Refresh (Sync state with AWS after import)
+        working-directory: terraform
+        env:
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+        run: terraform refresh
 
       - name: Terraform Plan
         working-directory: terraform
