@@ -122,13 +122,7 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
-        run: terraform plan -refresh-only
-
-      - name: Terraform Plan
-        working-directory: terraform
-        env:
-          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
-        run: terraform plan -out=tfplan
+        run: terraform plan -refresh-only -out=tfplan
 
       - name: Terraform Apply (Idempotent - creates if doesn't exist, skips if exists)
         working-directory: terraform
