@@ -55,6 +55,12 @@ config.local.yml
 config.local.yaml
 config/local.py
 
+# SSH Keys & Secrets
+*.pem
+*.key
+.ssh/
+!.ssh/.gitkeep
+
 # Logs
 *.log
 logs/
