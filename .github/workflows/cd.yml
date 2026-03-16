@@ -139,17 +139,17 @@ jobs:
         working-directory: terraform
         run: terraform fmt -check -recursive
 
-      - name: Terraform Plan
-        working-directory: terraform
-        env:
-          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
-        run: terraform plan -out=tfplan
-
       - name: Terraform Refresh (Sync state with AWS)
         working-directory: terraform
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: terraform refresh
+
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+        run: terraform plan -out=tfplan
 
       - name: Terraform Apply (Idempotent - creates if doesn't exist, skips if exists)
         working-directory: terraform
