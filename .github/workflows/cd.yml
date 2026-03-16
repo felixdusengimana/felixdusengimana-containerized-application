@@ -102,6 +102,27 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Create S3 Backend Bucket (if not exists)
+        run: |
+          aws s3 ls s3://agrimarket-terraform-state 2>/dev/null || \
+          aws s3 mb s3://agrimarket-terraform-state --region ${{ env.AWS_REGION }}
+          aws s3api put-bucket-versioning \
+            --bucket agrimarket-terraform-state \
+            --versioning-configuration Status=Enabled \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Create DynamoDB Table for Locks (if not exists)
+        run: |
+          aws dynamodb describe-table \
+            --table-name terraform-locks \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || \
+          aws dynamodb create-table \
+            --table-name terraform-locks \
+            --attribute-definitions AttributeName=LockID,AttributeType=S \
+            --key-schema AttributeName=LockID,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --region ${{ env.AWS_REGION }}
+
       - name: Terraform Init
         working-directory: terraform
         env:
@@ -123,6 +144,12 @@ jobs:
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: terraform plan -out=tfplan
+
+      - name: Terraform Refresh (Sync state with AWS)
+        working-directory: terraform
+        env:
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+        run: terraform refresh
 
       - name: Terraform Apply (Idempotent - creates if doesn't exist, skips if exists)
         working-directory: terraform
