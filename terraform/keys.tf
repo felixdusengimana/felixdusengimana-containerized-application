@@ -26,4 +26,5 @@ output "private_key_pem" {
 output "key_pair_name" {
   value       = aws_key_pair.agrimarket.key_name
   description = "EC2 key pair name for GitHub Secrets: AWS_EC2_KEY_PAIR_NAME"
+  sensitive   = true
 }
