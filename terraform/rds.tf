@@ -19,12 +19,11 @@ resource "aws_db_instance" "main" {
 
   multi_az                  = false
   publicly_accessible       = false
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  skip_final_snapshot       = true
+  backup_retention_period   = 1
 
-  backup_retention_period = 7
-  backup_window           = "03:00-04:00"
-  maintenance_window      = "sun:04:00-sun:05:00"
+  backup_window      = "03:00-04:00"
+  maintenance_window = "sun:04:00-sun:05:00"
 
   tags = {
     Name = "${var.project_name}-postgres"
