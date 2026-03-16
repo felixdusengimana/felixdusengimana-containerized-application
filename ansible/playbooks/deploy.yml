@@ -70,26 +70,41 @@
             group: "{{ app_user }}"
             mode: '0755'
 
-        - name: Clone or pull latest code from GitHub
-          git:
-            repo: "{{ github_repo_url }}"
-            dest: "{{ app_dir }}"
-            version: main
-            update: yes
-            accept_hostkey: yes
-          become_user: "{{ app_user }}"
-          when: github_repo_url is defined
+        - name: Create docker-compose.yml for production
+          copy:
+            content: |
+              version: '3.8'
+              services:
+                backend:
+                  image: "{{ backend_image }}"
+                  ports:
+                    - "8000:8000"
+                  environment:
+                    - DATABASE_URL=postgresql://{{ rds_username }}:{{ rds_password }}@{{ rds_endpoint }}/agrimarket
+                    - DEBUG=False
+                    - SECRET_KEY={{ django_secret_key }}
+                    - ALLOWED_HOSTS=*
+                  healthcheck:
+                    test: ["CMD", "curl", "-f", "http://localhost:8000/api/products/"]
+                    interval: 10s
+                    timeout: 5s
+                    retries: 5
 
-    - name: Configure environment variables
-      block:
-        - name: Create .env file for Docker Compose
-          template:
-            src: env.j2
-            dest: "{{ app_dir }}/.env"
+                frontend:
+                  image: "{{ frontend_image }}"
+                  ports:
+                    - "8080:80"
+                  depends_on:
+                    - backend
+                  healthcheck:
+                    test: ["CMD", "curl", "-f", "http://localhost:80/"]
+                    interval: 10s
+                    timeout: 5s
+                    retries: 5
+            dest: "{{ app_dir }}/docker-compose.yml"
             owner: "{{ app_user }}"
             group: "{{ app_user }}"
-            mode: '0600'
-          notify: Restart application
+            mode: '0644'
 
     - name: Build and deploy with Docker Compose
       block:
