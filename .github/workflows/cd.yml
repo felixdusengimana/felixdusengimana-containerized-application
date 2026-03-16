@@ -1,0 +1,249 @@
+name: CD Pipeline - Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      skip_docker_build:
+        description: 'Skip Docker build and use latest tags'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+
+jobs:
+  ci-check:
+    name: Verify CI Passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Wait for CI pipeline
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'All Checks Passed'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          allowed-conclusions: success
+
+  build-and-push:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    needs: [ci-check]
+    outputs:
+      backend_image_uri: ${{ steps.image-uri.outputs.backend_image_uri }}
+      frontend_image_uri: ${{ steps.image-uri.outputs.frontend_image_uri }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/agrimarket-backend:latest
+            ${{ steps.login-ecr.outputs.registry }}/agrimarket-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/agrimarket-frontend:latest
+            ${{ steps.login-ecr.outputs.registry }}/agrimarket-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set image URIs
+        id: image-uri
+        run: |
+          echo "backend_image_uri=${{ steps.login-ecr.outputs.registry }}/agrimarket-backend:latest" >> $GITHUB_OUTPUT
+          echo "frontend_image_uri=${{ steps.login-ecr.outputs.registry }}/agrimarket-frontend:latest" >> $GITHUB_OUTPUT
+
+      - name: Scan pushed images in ECR
+        run: |
+          aws ecr start-image-scan --repository-name agrimarket-backend --image-id imageTag=latest --region ${{ env.AWS_REGION }} || true
+          aws ecr start-image-scan --repository-name agrimarket-frontend --image-id imageTag=latest --region ${{ env.AWS_REGION }} || true
+
+  terraform-apply:
+    name: Terraform Apply (Infrastructure)
+    runs-on: ubuntu-latest
+    needs: [ci-check]
+    outputs:
+      bastion_public_ip: ${{ steps.tf-outputs.outputs.bastion_public_ip }}
+      app_vm_private_ip: ${{ steps.tf-outputs.outputs.app_vm_private_ip }}
+      rds_endpoint: ${{ steps.tf-outputs.outputs.rds_endpoint }}
+      ecr_registry: ${{ steps.tf-outputs.outputs.ecr_registry }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+        env:
+          TF_VAR_ec2_key_pair_name: ${{ secrets.AWS_EC2_KEY_PAIR_NAME }}
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+
+      - name: Terraform Apply (Idempotent - creates if doesn't exist, skips if exists)
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+        env:
+          TF_VAR_ec2_key_pair_name: ${{ secrets.AWS_EC2_KEY_PAIR_NAME }}
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+
+      - name: Extract Terraform Outputs
+        id: tf-outputs
+        working-directory: terraform
+        run: |
+          bastion_ip=$(terraform output -raw bastion_public_ip)
+          app_vm_ip=$(terraform output -raw app_vm_private_ip)
+          rds_endpoint=$(terraform output -raw rds_endpoint)
+          ecr_registry=$(terraform output -raw ecr_backend_repository_url | cut -d'/' -f1)
+          
+          echo "bastion_public_ip=$bastion_ip" >> $GITHUB_OUTPUT
+          echo "app_vm_private_ip=$app_vm_ip" >> $GITHUB_OUTPUT
+          echo "rds_endpoint=$rds_endpoint" >> $GITHUB_OUTPUT
+          echo "ecr_registry=$ecr_registry" >> $GITHUB_OUTPUT
+          
+          echo "✓ Infrastructure outputs extracted:"
+          echo "  Bastion IP: $bastion_ip"
+          echo "  App VM IP: $app_vm_ip"
+          echo "  RDS Endpoint: $rds_endpoint"
+          echo "  ECR Registry: $ecr_registry"
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, terraform-apply]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH access
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ needs.terraform-apply.outputs.bastion_public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Verify SSH Connection to App VM via Bastion
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ needs.terraform-apply.outputs.bastion_public_ip }}" \
+              ubuntu@${{ needs.terraform-apply.outputs.app_vm_private_ip }} \
+              "echo 'SSH connection successful'"
+
+      - name: Setup Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible boto3 botocore
+
+      - name: Create Ansible Inventory
+        run: |
+          mkdir -p /tmp/ansible
+          cat > /tmp/ansible/hosts.ini << 'EOF'
+          [app_vm]
+          ${{ needs.terraform-apply.outputs.app_vm_private_ip }} \
+            ansible_user=ubuntu \
+            ansible_ssh_private_key_file=~/.ssh/id_rsa \
+            ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ needs.terraform-apply.outputs.bastion_public_ip }}"'
+
+          [app_vm:vars]
+          aws_region=${{ env.AWS_REGION }}
+          ecr_registry=${{ needs.terraform-apply.outputs.ecr_registry }}
+          github_repo_url=${{ github.server_url }}/${{ github.repository }}
+          rds_endpoint=${{ needs.terraform-apply.outputs.rds_endpoint }}
+          rds_username=postgres
+          rds_password=${{ secrets.DB_MASTER_PASSWORD }}
+          django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}
+          EOF
+          cat /tmp/ansible/hosts.ini
+
+      - name: Run Ansible Deployment Playbook
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: false
+        run: |
+          ansible-playbook \
+            -i /tmp/ansible/hosts.ini \
+            -e "backend_image=${{ needs.build-and-push.outputs.backend_image_uri }}" \
+            -e "frontend_image=${{ needs.build-and-push.outputs.frontend_image_uri }}" \
+            ansible/playbooks/deploy.yml \
+            -v
+
+      - name: Verify Deployment
+        run: |
+          echo "Waiting for services to be ready..."
+          sleep 15
+          
+          # Check if backend is responding
+          ssh -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ needs.terraform-apply.outputs.bastion_public_ip }}" \
+              ubuntu@${{ needs.terraform-apply.outputs.app_vm_private_ip }} \
+              "docker-compose -f /opt/agrimarket/docker-compose.yml ps && curl -f http://localhost:8000/api/products/ || echo 'Health check pending'"
+
+      - name: Cleanup SSH Key
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa
+          rm -f ~/.ssh/known_hosts

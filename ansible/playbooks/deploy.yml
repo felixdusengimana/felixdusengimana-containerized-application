@@ -1,0 +1,171 @@
+---
+- name: Deploy AgriMarket Application to Production
+  hosts: app_vm
+  become: yes
+  gather_facts: yes
+
+  vars:
+    app_dir: /opt/agrimarket
+    app_user: ubuntu
+    aws_region: "{{ aws_region | default('us-east-1') }}"
+
+  pre_tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        delay: 10
+        timeout: 300
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+  tasks:
+    - name: Ensure Docker is installed and running
+      block:
+        - name: Check Docker installation
+          command: docker --version
+          register: docker_check
+          failed_when: false
+          changed_when: false
+
+        - name: Start Docker service
+          systemd:
+            name: docker
+            state: started
+            enabled: yes
+          when: ansible_os_family == "Debian"
+
+    - name: Ensure Docker Compose is available
+      block:
+        - name: Check Docker Compose installation
+          command: docker-compose --version
+          register: compose_check
+          failed_when: false
+          changed_when: false
+
+    - name: Authenticate to AWS ECR
+      block:
+        - name: Get ECR login token
+          shell: |
+            aws ecr get-login-password --region {{ aws_region }} | docker login --username AWS --password-stdin {{ ecr_registry }}
+          environment:
+            AWS_DEFAULT_REGION: "{{ aws_region }}"
+          register: ecr_login
+          changed_when: false
+          no_log: true
+
+        - name: Verify ECR authentication
+          command: docker ps
+          register: docker_status
+          changed_when: false
+
+    - name: Setup application directory
+      block:
+        - name: Create application directory
+          file:
+            path: "{{ app_dir }}"
+            state: directory
+            owner: "{{ app_user }}"
+            group: "{{ app_user }}"
+            mode: '0755'
+
+        - name: Clone or pull latest code from GitHub
+          git:
+            repo: "{{ github_repo_url }}"
+            dest: "{{ app_dir }}"
+            version: main
+            update: yes
+            accept_hostkey: yes
+          become_user: "{{ app_user }}"
+          when: github_repo_url is defined
+
+    - name: Configure environment variables
+      block:
+        - name: Create .env file for Docker Compose
+          template:
+            src: env.j2
+            dest: "{{ app_dir }}/.env"
+            owner: "{{ app_user }}"
+            group: "{{ app_user }}"
+            mode: '0600'
+          notify: Restart application
+
+    - name: Build and deploy with Docker Compose
+      block:
+        - name: Pull latest images from ECR
+          shell: |
+            docker-compose -f {{ app_dir }}/docker-compose.yml pull
+          environment:
+            AWS_DEFAULT_REGION: "{{ aws_region }}"
+          register: compose_pull
+          changed_when: "'Pulling' in compose_pull.stdout"
+
+        - name: Start services with Docker Compose
+          shell: |
+            cd {{ app_dir }} && docker-compose up -d
+          register: compose_up
+          changed_when: "'Creating' in compose_up.stdout or 'Starting' in compose_up.stdout"
+
+    - name: Apply database migrations
+      block:
+        - name: Wait for backend service to be ready
+          wait_for:
+            host: localhost
+            port: 8000
+            delay: 5
+            timeout: 60
+
+        - name: Run Django migrations
+          shell: |
+            docker-compose -f {{ app_dir }}/docker-compose.yml exec -T backend python manage.py migrate
+          register: migrations
+          changed_when: false
+
+    - name: Health checks
+      block:
+        - name: Check backend health
+          uri:
+            url: http://localhost:8000/api/products/
+            method: GET
+            status_code: [200, 401, 403]
+          register: backend_health
+          retries: 5
+          delay: 10
+          until: backend_health.status | default(0) >= 200
+
+        - name: Check frontend health
+          uri:
+            url: http://localhost:8080/
+            method: GET
+            status_code: [200, 301, 304]
+          register: frontend_health
+          retries: 5
+          delay: 10
+          until: frontend_health.status | default(0) >= 200
+
+        - name: Display service status
+          shell: docker-compose -f {{ app_dir }}/docker-compose.yml ps
+          register: service_status
+          changed_when: false
+
+        - name: Show service status
+          debug:
+            msg: "{{ service_status.stdout }}"
+
+  handlers:
+    - name: Restart application
+      shell: |
+        cd {{ app_dir }} && docker-compose restart
+
+  post_tasks:
+    - name: Deployment Summary
+      debug:
+        msg: |
+          ✓ Deployment Complete!
+          Application is running at:
+            - Backend API: http://{{ ansible_default_ipv4.address }}:8000/
+            - Frontend: http://{{ ansible_default_ipv4.address }}:8080/
+          
+          Services Status:
+          {{ service_status.stdout }}

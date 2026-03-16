@@ -459,6 +459,298 @@ If CI fails:
 4. Push the fix and CI will re-run automatically
 5. Merge only when all checks ✅ pass
 
+## Production Deployment Architecture
+
+AgriMarket is deployed on AWS with a fully automated Git-to-Production pipeline using Infrastructure as Code (Terraform), Configuration Management (Ansible), and continuous deployment workflows (GitHub Actions).
+
+### 🏗️ Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          AWS Region (us-east-1)                     │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                      VPC (10.0.0.0/16)                       │  │
+│  │                                                              │  │
+│  │  ┌────────────────────────────────────────────────────────┐ │  │
+│  │  │            PUBLIC SUBNET (10.0.1.0/24)                 │ │  │
+│  │  │                                                        │ │  │
+│  │  │  ┌──────────────────────┐                             │ │  │
+│  │  │  │    Bastion Host      │                             │ │  │
+│  │  │  │   (t3.micro, port 22)│─── SSH from Internet        │ │  │
+│  │  │  │   18.x.x.x (EIP)     │                             │ │  │
+│  │  │  └──────────────────────┘                             │ │  │
+│  │  │           │                                            │ │  │
+│  │  │ ┌─────────▼────────────┐                              │ │  │
+│  │  │ │   NAT Gateway        │ Provides egress for          │ │  │
+│  │  │ │                      │ Private subnet               │ │  │
+│  │  │ └─────────┬────────────┘                              │ │  │
+│  │  └────────────┼────────────────────────────────────────┘ │  │
+│  │               │                                           │  │
+│  │  ┌────────────▼────────────────────────────────────────┐ │  │
+│  │  │         PRIVATE SUBNET (10.0.2.0/24)               │ │  │
+│  │  │                                                    │ │  │
+│  │  │  ┌──────────────────────┐                         │ │  │
+│  │  │  │   Application VM     │                         │ │  │
+│  │  │  │   (t3.small)         │                         │ │  │
+│  │  │  │   10.0.2.x (Private) │  Receives SSH from      │ │  │
+│  │  │  │                      │  Bastion only           │ │  │
+│  │  │  │  ┌────────────────┐  │                         │ │  │
+│  │  │  │  │    Docker      │  │  Runs:                  │ │  │
+│  │  │  │  │ • Backend      │  │  • Backend API (8000)   │ │  │
+│  │  │  │  │ • Frontend     │  │  • Frontend (8080)      │ │  │
+│  │  │  │  │ • Compose      │  │                         │ │  │
+│  │  │  │  └────────────────┘  │                         │ │  │
+│  │  │  │                      │                         │ │  │
+│  │  │  │  Pulls images from ──┼─┐                       │ │  │
+│  │  │  │  ECR & authenticates │ │                       │ │  │
+│  │  │  └──────────────────────┘ │                       │ │  │
+│  │  │                           │                       │ │  │
+│  │  │  Connects to RDS ─────────┼──────┐                │ │  │
+│  │  └───────────────────────────┼──────┼────────────┘ │  │
+│  │                              │      │               │  │
+│  │  ┌──────────────────────────┘      │               │  │
+│  │  │                                  │               │  │
+│  │  │  ┌────────────────────────────────▼─────────┐   │  │
+│  │  │  │  PRIVATE SUBNET (10.0.3.0/24)           │   │  │
+│  │  │  │  RDS PostgreSQL                          │   │  │
+│  │  │  │  • Port: 5432 (internal only)            │   │  │
+│  │  │  │  • db.t3.micro with 20GB storage         │   │  │
+│  │  │  │  • Accessible only from App VM           │   │  │
+│  │  │  └──────────────────────────────────────────┘   │  │
+│  │  └─────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  │  ┌────────────────────────────────────────────────┐   │  │
+│  │  │         ECR (Private Container Registry)        │   │  │
+│  │  │  • agrimarket-backend:latest                   │   │  │
+│  │  │  • agrimarket-frontend:latest                  │   │  │
+│  │  │  Accessed via IAM role from App VM            │   │  │
+│  │  └────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │         GitHub Actions CI/CD Pipeline              │   │
+│  │                                                     │   │
+│  │ 1. ✓ Tests, Linting, Security Scans               │   │
+│  │ 2. ✓ Trivy Container Scanning                     │   │
+│  │ 3. ✓ tfsec Infrastructure Scanning                │   │
+│  │ 4. → Build Docker images                          │   │
+│  │ 5. → Push to ECR                                  │   │
+│  │ 6. → Run Ansible playbook                         │   │
+│  │    • SSH via Bastion                              │   │
+│  │    • Pull latest images from ECR                  │   │
+│  │    • Restart services with docker-compose         │   │
+│  │    • Verify deployment health                     │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+
+GitHub (main branch)
+    ↓
+    ├─→ CI Pipeline: Tests, Scans ✓
+    ↓
+    ├─→ CD Pipeline (on main push only):
+    │      • Build images
+    │      • Push to private ECR
+    │      • Run Terraform plan
+    ↓
+    └─→ Deploy via Ansible:
+           • SSH to App VM through Bastion
+           • Pull images from ECR
+           • Run docker-compose up -d
+           • Health checks
+```
+
+### 📋 Infrastructure Components
+
+| Component | Details |
+|-----------|---------|
+| **VPC** | 10.0.0.0/16 with public and private subnets |
+| **Bastion Host** | t3.micro in public subnet (SSH access point) |
+| **Application VM** | t3.small in private subnet (no direct internet access) |
+| **Database** | PostgreSQL RDS (db.t3.micro, 20GB, no Multi-AZ) |
+| **Container Registry** | Amazon ECR (private, auto-scanned on push) |
+| **Networking** | Security groups restrict SSH, Database, and HTTP/HTTPS traffic |
+
+### 🚀 Continuous Deployment Workflow
+
+#### Git-to-Production Pipeline
+
+1. **Developer makes code change** (e.g., update button text)
+   ```bash
+   git checkout -b feature/update-ui
+   # Make code changes
+   git add .
+   git commit -m "Update button text"
+   git push origin feature/update-ui
+   ```
+
+2. **Create Pull Request** → Triggers CI Pipeline
+   - Tests run (backend, frontend, docker-compose)
+   - Security scans run (Bandit, TruffleHog)
+   - Container scanning (Trivy)
+   - IaC scanning (tfsec)
+   - ✓ All checks must pass before merge
+
+3. **Code Review & Merge** to `main` → Triggers CD Pipeline
+   - Verifies CI passed
+   - Builds Docker images
+   - Pushes to private ECR
+   - Runs Terraform plan and apply (if needed)
+   - Executes Ansible playbook:
+     - SSH to App VM via Bastion
+     - Authenticates to ECR
+     - Pulls latest images
+     - Runs `docker-compose up -d`
+     - Verifies health
+
+4. **Live Application Updated** ✓
+   - Change is live on production within 2-5 minutes
+   - Visible at: http://<app-vm-ip>:8080/
+
+### 📦 Production Deployment Setup
+
+#### Prerequisites
+
+- AWS Account with credentials configured
+- GitHub repository with secrets configured:
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+  - `SSH_PRIVATE_KEY` (for EC2 key pair)
+  - `DB_MASTER_PASSWORD` (PostgreSQL password)
+  - `DJANGO_SECRET_KEY` (Django secret key)
+
+#### Infrastructure Provisioning
+
+1. **Install Terraform** (v1.5+)
+   ```bash
+   terraform --version  # Verify installation
+   ```
+
+2. **Update Terraform Variables**
+   ```bash
+   cd terraform
+   # Edit terraform.tfvars with your settings
+   # Most importantly, set: ec2_key_pair_name = "your-key-pair"
+   nano terraform.tfvars
+   ```
+
+3. **Initialize and Plan**
+   ```bash
+   terraform init
+   terraform plan -var="db_master_password=YourSecurePassword123!"
+   ```
+
+4. **Apply Infrastructure**
+   ```bash
+   terraform apply -var="db_master_password=YourSecurePassword123!"
+   # Confirm with 'yes'
+   # Wait 5-10 minutes for all resources to be created
+   ```
+
+5. **Verify Outputs**
+   ```bash
+   terraform output
+   # Save these values for Ansible and CD pipeline:
+   # - bastion_public_ip
+   # - app_vm_private_ip
+   # - rds_endpoint
+   # - ecr_backend_repository_url
+   # - ecr_frontend_repository_url
+   ```
+
+#### Configuration Management
+
+1. **Install Ansible**
+   ```bash
+   python3 -m pip install ansible boto3 botocore
+   ```
+
+2. **Create Ansible Inventory**
+   ```bash
+   # Update ansible/inventory/hosts.ini with:
+   # - Bastion public IP
+   # - App VM private IP
+   # - SSH key path
+   # - Environment variables
+   nano ansible/inventory/hosts.ini
+   ```
+
+3. **Test SSH Connection**
+   ```bash
+   # SSH to Bastion
+   ssh -i /path/to/key.pem ubuntu@<bastion-public-ip>
+   
+   # From Bastion, SSH to App VM (if Bastion doesn't have key, use ProxyCommand)
+   ```
+
+4. **Run Deployment Playbook**
+   ```bash
+   ansible-playbook \
+     -i ansible/inventory/hosts.ini \
+     ansible/playbooks/deploy.yml
+   ```
+
+### 🔐 Security Architecture
+
+- **Network Isolation**: App VM in private subnet, no direct internet access
+- **Bastion Pattern**: Only entry point for SSH is Bastion host
+- **Secret Storage**: Sensitive values in GitHub Secrets, not in code
+- **IAM Roles**: EC2 instance has minimal IAM role (ECR access only)
+- **Database Security**: RDS only accessible from App VM security group
+- **Container Scanning**: Trivy scans images on push to ECR
+- **IaC Scanning**: tfsec validates Terraform for misconfigurations
+
+### 📊 Monitoring & Logs
+
+**Check Application Status**
+1. SSH to Bastion: `ssh -i key.pem ubuntu@<bastion-ip>`
+2. SSH to App VM: `ssh -i key.pem ubuntu@<app-vm-ip>`
+3. Check services: `docker-compose ps`
+4. View logs: `docker-compose logs -f backend` or `-f frontend`
+
+**AWS CloudWatch Logs**
+- RDS logs available in CloudWatch
+- Configure CloudWatch monitoring for EC2 instances (optional)
+
+### 🛑 Troubleshooting
+
+**Issue**: "Cannot connect to App VM"
+- Solution: Verify Bastion is running, correct SSH key, security groups allow SSH from Bastion
+
+**Issue**: "Database connection failed"
+- Solution: Check RDS security group allows 5432 from App VM security group
+
+**Issue**: "Cannot pull from ECR"
+- Solution: Verify IAM role on EC2 has ECR permissions, `aws ecr get-login-password` works
+
+**Issue**: "Docker Compose won't start services"
+- Solution: Check Docker is running (`systemctl status docker`), log volume permissions
+
+**Issue**: "Ansible playbook fails"
+- Solution: Check inventory file has correct IPs, SSH access works, environment variables set
+
+### 💰 Cost Estimation (Monthly)
+
+- **Bastion (t3.micro)**: ~$4/month
+- **App VM (t3.small)**: ~$10/month
+- **RDS PostgreSQL (db.t3.micro)**: ~$15/month
+- **Elastic IPs**: ~$1/month
+- **NAT Gateway**: ~$32/month
+- **ECR Storage**: ~$5/month (depending on image size)
+- **Total**: ~$67/month
+
+Use AWS Free Tier if eligible to reduce costs significantly.
+
+### 🎥 Live Application
+
+**URL**: http://<bastion-public-ip>:8080/
+(Replace `<bastion-public-ip>` with actual Bastion IP from `terraform output`)
+
+**Backend API**: http://<bastion-public-ip>:8000/api/
+
+---
+
 ## Team Information
 
 | Name | Role |
