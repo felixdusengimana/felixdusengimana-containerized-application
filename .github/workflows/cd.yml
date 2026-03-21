@@ -133,13 +133,21 @@ jobs:
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: |
-          # Get raw outputs without any debug noise
-          bastion_ip=$(terraform output -raw bastion_public_ip)
-          app_vm_ip=$(terraform output -raw app_vm_private_ip)
-          rds_endpoint=$(terraform output -raw rds_endpoint)
-          ecr_registry=$(terraform output -raw ecr_backend_repository_url | cut -d'/' -f1)
+          set +x  # Disable command echoing
           
-          # Write to GITHUB_OUTPUT with explicit format
+          # Capture outputs and strip any debug/command lines
+          bastion_ip=$(terraform output -raw bastion_public_ip 2>/dev/null | tail -1)
+          app_vm_ip=$(terraform output -raw app_vm_private_ip 2>/dev/null | tail -1)
+          rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null | tail -1)
+          ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>/dev/null | tail -1 | cut -d'/' -f1)
+          
+          # Strip any remaining debug lines (just in case)
+          bastion_ip=$(echo "$bastion_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
+          app_vm_ip=$(echo "$app_vm_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
+          rds_endpoint=$(echo "$rds_endpoint" | grep -v "^\[" | grep -v "::debug" | tail -1)
+          ecr_registry=$(echo "$ecr_registry" | grep -v "^\[" | grep -v "::debug" | tail -1)
+          
+          # Write clean values to GITHUB_OUTPUT
           {
             echo "bastion_public_ip=$bastion_ip"
             echo "app_vm_private_ip=$app_vm_ip"
@@ -147,9 +155,7 @@ jobs:
             echo "ecr_registry=$ecr_registry"
           } >> "$GITHUB_OUTPUT"
           
-          # Print for verification
-          echo "✓ Output written:"
-          cat "$GITHUB_OUTPUT" | grep -E "^(bastion|app_vm|rds|ecr)"
+          set -x
 
       - name: Validate Terraform Outputs
         working-directory: terraform
