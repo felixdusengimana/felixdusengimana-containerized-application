@@ -142,7 +142,8 @@ resource "aws_route_table_association" "private_rds" {
 
 # DB Subnet Group for RDS
 resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet-group"
+  # Tie the subnet group name to the current VPC to avoid cross-VPC reuse conflicts.
+  name       = "${var.project_name}-${substr(aws_vpc.main.id, 4, 8)}-db-subnet-group"
   subnet_ids = [aws_subnet.private_rds.id, aws_subnet.private.id]
 
   tags = {

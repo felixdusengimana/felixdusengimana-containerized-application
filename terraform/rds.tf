@@ -8,7 +8,6 @@ resource "aws_db_instance" "main" {
   allocated_storage = var.rds_allocated_storage
   storage_type      = "gp2"
   storage_encrypted = true
-  iops              = 3000
 
   db_name  = var.db_name
   username = var.db_master_username
