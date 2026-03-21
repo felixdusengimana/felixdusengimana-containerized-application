@@ -133,52 +133,49 @@ jobs:
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: |
-          bastion_ip=$(terraform output -raw bastion_public_ip 2>&1 | head -n1)
-          app_vm_ip=$(terraform output -raw app_vm_private_ip 2>&1 | head -n1)
-          rds_endpoint=$(terraform output -raw rds_endpoint 2>&1 | head -n1)
-          ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>&1 | cut -d'/' -f1 | head -n1)
+          # Get raw outputs without any debug noise
+          bastion_ip=$(terraform output -raw bastion_public_ip)
+          app_vm_ip=$(terraform output -raw app_vm_private_ip)
+          rds_endpoint=$(terraform output -raw rds_endpoint)
+          ecr_registry=$(terraform output -raw ecr_backend_repository_url | cut -d'/' -f1)
           
-          # Remove any debug lines
-          bastion_ip=$(echo "$bastion_ip" | grep -v "::debug::" | grep -v "exited with" | head -n1)
-          app_vm_ip=$(echo "$app_vm_ip" | grep -v "::debug::" | grep -v "exited with" | head -n1)
-          rds_endpoint=$(echo "$rds_endpoint" | grep -v "::debug::" | grep -v "exited with" | head -n1)
-          ecr_registry=$(echo "$ecr_registry" | grep -v "::debug::" | grep -v "exited with" | head -n1)
+          # Write to GITHUB_OUTPUT with explicit format
+          {
+            echo "bastion_public_ip=$bastion_ip"
+            echo "app_vm_private_ip=$app_vm_ip"
+            echo "rds_endpoint=$rds_endpoint"
+            echo "ecr_registry=$ecr_registry"
+          } >> "$GITHUB_OUTPUT"
           
-          echo "bastion_public_ip=${bastion_ip}" >> $GITHUB_OUTPUT
-          echo "app_vm_private_ip=${app_vm_ip}" >> $GITHUB_OUTPUT
-          echo "rds_endpoint=${rds_endpoint}" >> $GITHUB_OUTPUT
-          echo "ecr_registry=${ecr_registry}" >> $GITHUB_OUTPUT
-          
-          echo "✓ Extracted outputs:"
-          echo "  Bastion: ${bastion_ip}"
-          echo "  App VM: ${app_vm_ip}"
-          echo "  RDS: ${rds_endpoint}"
-          echo "  ECR: ${ecr_registry}"
+          # Print for verification
+          echo "✓ Output written:"
+          cat "$GITHUB_OUTPUT" | grep -E "^(bastion|app_vm|rds|ecr)"
 
       - name: Validate Terraform Outputs
         working-directory: terraform
         run: |
-          echo "Validating outputs..."
-          bastion_public_ip=$(terraform output -raw bastion_public_ip 2>&1 | head -n1)
-          app_vm_private_ip=$(terraform output -raw app_vm_private_ip 2>&1 | head -n1)
-          
-          echo "Bastion IP: $bastion_public_ip"
-          echo "App VM IP: $app_vm_private_ip"
+          bastion_public_ip=$(terraform output -raw bastion_public_ip)
+          app_vm_private_ip=$(terraform output -raw app_vm_private_ip)
           
           if [[ -z "$bastion_public_ip" ]] || [[ -z "$app_vm_private_ip" ]]; then
-            echo "ERROR: Outputs are empty or invalid!"
-            echo "Bastion empty: $([ -z "$bastion_public_ip" ] && echo 'YES' || echo 'NO')"
-            echo "App VM empty: $([ -z "$app_vm_private_ip" ] && echo 'YES' || echo 'NO')"
-            terraform output
+            echo "ERROR: Outputs are empty!"
             exit 1
           fi
-          echo "✓ All outputs validated"
+          echo "✓ Outputs valid - Bastion: $bastion_public_ip, App VM: $app_vm_private_ip"
 
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [build-and-push, terraform-apply]
     steps:
+      - name: Debug - Check Job Outputs
+        run: |
+          echo "Checking terraform-apply outputs..."
+          echo "Bastion Public IP: ${{ needs.terraform-apply.outputs.bastion_public_ip }}"
+          echo "App VM Private IP: ${{ needs.terraform-apply.outputs.app_vm_private_ip }}"
+          echo "RDS Endpoint: ${{ needs.terraform-apply.outputs.rds_endpoint }}"
+          echo "ECR Registry: ${{ needs.terraform-apply.outputs.ecr_registry }}"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
