@@ -135,11 +135,13 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+          TF_LOG: ""
+          RUNNER_DEBUG: "0"
         run: |
-          bastion_ip=$(terraform output -raw bastion_public_ip 2>/dev/null)
-          app_vm_ip=$(terraform output -raw app_vm_private_ip 2>/dev/null)
-          rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null)
-          ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>/dev/null | cut -d'/' -f1)
+          bastion_ip=$(terraform output -raw bastion_public_ip 2>&1 | grep -v "::debug::" | grep -v "exited with code" | head -1)
+          app_vm_ip=$(terraform output -raw app_vm_private_ip 2>&1 | grep -v "::debug::" | grep -v "exited with code" | head -1)
+          rds_endpoint=$(terraform output -raw rds_endpoint 2>&1 | grep -v "::debug::" | grep -v "exited with code" | head -1)
+          ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>&1 | grep -v "::debug::" | grep -v "exited with code" | cut -d'/' -f1 | head -1)
           
           echo "bastion_public_ip=${bastion_ip}" >> $GITHUB_OUTPUT
           echo "app_vm_private_ip=${app_vm_ip}" >> $GITHUB_OUTPUT
@@ -147,10 +149,10 @@ jobs:
           echo "ecr_registry=${ecr_registry}" >> $GITHUB_OUTPUT
           
           echo "✓ Infrastructure outputs extracted:"
-          echo "  Bastion IP: $bastion_ip"
-          echo "  App VM IP: $app_vm_ip"
-          echo "  RDS Endpoint: $rds_endpoint"
-          echo "  ECR Registry: $ecr_registry"
+          echo "  Bastion IP: ${bastion_ip}"
+          echo "  App VM IP: ${app_vm_ip}"
+          echo "  RDS Endpoint: ${rds_endpoint}"
+          echo "  ECR Registry: ${ecr_registry}"
 
   deploy:
     name: Deploy to Production
