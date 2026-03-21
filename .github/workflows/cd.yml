@@ -73,11 +73,6 @@ jobs:
           echo "backend_image_uri=${{ steps.login-ecr.outputs.registry }}/agrimarket-backend:latest" >> $GITHUB_OUTPUT
           echo "frontend_image_uri=${{ steps.login-ecr.outputs.registry }}/agrimarket-frontend:latest" >> $GITHUB_OUTPUT
 
-      - name: Scan pushed images in ECR
-        run: |
-          aws ecr start-image-scan --repository-name agrimarket-backend --image-id imageTag=latest --region ${{ env.AWS_REGION }} || true
-          aws ecr start-image-scan --repository-name agrimarket-frontend --image-id imageTag=latest --region ${{ env.AWS_REGION }} || true
-
   terraform-apply:
     name: Terraform Apply (Infrastructure)
     runs-on: ubuntu-latest
@@ -177,10 +172,14 @@ jobs:
           ssh-keyscan -H ${{ needs.terraform-apply.outputs.bastion_public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Verify SSH Connection to App VM via Bastion
+        env:
+          BASTION_IP: ${{ needs.terraform-apply.outputs.bastion_public_ip }}
+          APP_VM_IP: ${{ needs.terraform-apply.outputs.app_vm_private_ip }}
         run: |
           ssh -o StrictHostKeyChecking=no \
-              -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ needs.terraform-apply.outputs.bastion_public_ip }}" \
-              ubuntu@${{ needs.terraform-apply.outputs.app_vm_private_ip }} \
+              -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${BASTION_IP}" \
+              -i ~/.ssh/id_rsa \
+              ubuntu@${APP_VM_IP} \
               "echo 'SSH connection successful'"
 
       - name: Setup Ansible
@@ -189,14 +188,18 @@ jobs:
           pip install ansible boto3 botocore
 
       - name: Create Ansible Inventory
+        env:
+          BASTION_IP: ${{ needs.terraform-apply.outputs.bastion_public_ip }}
+          APP_VM_IP: ${{ needs.terraform-apply.outputs.app_vm_private_ip }}
         run: |
           mkdir -p /tmp/ansible
-          cat > /tmp/ansible/hosts.ini << 'EOF'
+          cat > /tmp/ansible/hosts.ini << EOF
           [app_vm]
-          ${{ needs.terraform-apply.outputs.app_vm_private_ip }} \
+          ${APP_VM_IP} \
             ansible_user=ubuntu \
             ansible_ssh_private_key_file=~/.ssh/id_rsa \
-            ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ needs.terraform-apply.outputs.bastion_public_ip }}"'
+            ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${BASTION_IP}"'
+          EOF
 
           [app_vm:vars]
           aws_region=${{ env.AWS_REGION }}
