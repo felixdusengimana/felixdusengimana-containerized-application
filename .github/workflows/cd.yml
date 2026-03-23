@@ -133,14 +133,23 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
+          TF_LOG: off
         run: |
-          # Extract outputs directly and write to GITHUB_OUTPUT
-          bastion_public_ip=$(terraform output -raw bastion_public_ip)
-          app_vm_private_ip=$(terraform output -raw app_vm_private_ip)
-          rds_endpoint=$(terraform output -raw rds_endpoint)
-          ecr_backend_url=$(terraform output -raw ecr_backend_repository_url)
+          set +x  # Disable command echoing to avoid [command] prefix in output
+          
+          # Extract outputs and suppress debug messages
+          bastion_public_ip=$(terraform output -raw bastion_public_ip 2>&1 | grep -v "::debug::" | grep -v "\[command\]" | head -1)
+          app_vm_private_ip=$(terraform output -raw app_vm_private_ip 2>&1 | grep -v "::debug::" | grep -v "\[command\]" | head -1)
+          rds_endpoint=$(terraform output -raw rds_endpoint 2>&1 | grep -v "::debug::" | grep -v "\[command\]" | head -1)
+          ecr_backend_url=$(terraform output -raw ecr_backend_repository_url 2>&1 | grep -v "::debug::" | grep -v "\[command\]" | head -1)
           ecr_registry=$(echo "$ecr_backend_url" | cut -d'/' -f1)
-          private_key_pem=$(terraform output -raw private_key_pem)
+          private_key_pem=$(terraform output -raw private_key_pem 2>&1 | grep -v "::debug::" | grep -v "\[command\]")
+          
+          # Validate outputs are not empty
+          if [[ -z "$bastion_public_ip" ]] || [[ -z "$app_vm_private_ip" ]]; then
+            echo "ERROR: Failed to extract Terraform outputs"
+            exit 1
+          fi
           
           # Write outputs to GITHUB_OUTPUT
           echo "bastion_public_ip=$bastion_public_ip" >> "$GITHUB_OUTPUT"
@@ -151,11 +160,10 @@ jobs:
           echo "$private_key_pem" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
           
-          # Verify outputs
-          echo "✓ Bastion IP: $bastion_public_ip"
-          echo "✓ App VM IP: $app_vm_private_ip"
-          echo "✓ RDS Endpoint: $rds_endpoint"
-          echo "✓ ECR Registry: $ecr_registry"
+          set -x  # Re-enable command echoing
+          
+          # Verify outputs (without debug noise)
+          echo "✓ Outputs extracted successfully"
 
       - name: Validate Terraform Outputs
         working-directory: terraform
