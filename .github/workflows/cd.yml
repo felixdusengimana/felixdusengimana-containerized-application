@@ -142,13 +142,12 @@ jobs:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
           TF_LOG: off
         run: |
-          # Suppress debug output and capture clean values
-          exec 2>/dev/null
+          set +x  # Disable command echoing
           
-          BASTION_IP=$(terraform output -raw bastion_public_ip)
-          APP_VM_IP=$(terraform output -raw app_vm_private_ip)
-          RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
-          ECR_REGISTRY=$(terraform output -raw ecr_backend_repository_url | cut -d'/' -f1)
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>&1 | tail -1)
+          APP_VM_IP=$(terraform output -raw app_vm_private_ip 2>&1 | tail -1)
+          RDS_ENDPOINT=$(terraform output -raw rds_endpoint 2>&1 | tail -1)
+          ECR_REGISTRY=$(terraform output -raw ecr_backend_repository_url 2>&1 | tail -1 | cut -d'/' -f1)
           
           # Save to file for next step
           cat > /tmp/tf-outputs.sh << OUTPUTS
@@ -158,6 +157,7 @@ jobs:
           export ECR_REGISTRY='$ECR_REGISTRY'
           OUTPUTS
           
+          set -x
           echo "✓ Outputs extracted"
 
       - name: Test SSH connection
