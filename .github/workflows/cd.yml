@@ -212,11 +212,23 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup SSH access
+        env:
+          TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: |
+          set +x  # Suppress debug output
+          cd terraform
+          
+          # Initialize terraform to read outputs
+          terraform init -upgrade > /dev/null 2>&1
+          
+          # Get private key directly from terraform
           mkdir -p ~/.ssh
-          echo "${{ needs.terraform-apply.outputs.private_key_pem }}" > ~/.ssh/id_rsa
+          terraform output -raw private_key_pem > ~/.ssh/id_rsa 2>/dev/null
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ needs.terraform-apply.outputs.bastion_public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Get bastion IP for ssh-keyscan
+          bastion_ip=$(terraform output -raw bastion_public_ip 2>/dev/null)
+          ssh-keyscan -H "$bastion_ip" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Debug - Check SSH Key File
         run: |
