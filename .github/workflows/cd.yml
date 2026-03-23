@@ -149,6 +149,17 @@ jobs:
           rds_endpoint=$(echo "$rds_endpoint" | grep -v "^\[" | grep -v "::debug" | tail -1)
           ecr_registry=$(echo "$ecr_registry" | grep -v "^\[" | grep -v "::debug" | tail -1)
           
+          # Debug: Show what we extracted
+          echo "=== DEBUG: Extracted Outputs ==="
+          echo "Bastion IP length: ${#bastion_ip}"
+          echo "App VM IP length: ${#app_vm_ip}"
+          echo "RDS Endpoint length: ${#rds_endpoint}"
+          echo "ECR Registry length: ${#ecr_registry}"
+          echo "Private Key line count: $(echo "$private_key" | wc -l)"
+          echo "Private Key first line: $(echo "$private_key" | head -1)"
+          echo "Private Key last line: $(echo "$private_key" | tail -1)"
+          echo "================================"
+          
           # Write outputs to GITHUB_OUTPUT
           {
             echo "bastion_public_ip=$bastion_ip"
@@ -186,6 +197,9 @@ jobs:
           echo "App VM Private IP: ${{ needs.terraform-apply.outputs.app_vm_private_ip }}"
           echo "RDS Endpoint: ${{ needs.terraform-apply.outputs.rds_endpoint }}"
           echo "ECR Registry: ${{ needs.terraform-apply.outputs.ecr_registry }}"
+          echo "Private Key length: $(echo '${{ needs.terraform-apply.outputs.private_key_pem }}' | wc -c)"
+          echo "Private Key first line: $(echo '${{ needs.terraform-apply.outputs.private_key_pem }}' | head -1)"
+          echo "Private Key last line: $(echo '${{ needs.terraform-apply.outputs.private_key_pem }}' | tail -1)"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -203,6 +217,22 @@ jobs:
           echo "${{ needs.terraform-apply.outputs.private_key_pem }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ needs.terraform-apply.outputs.bastion_public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Debug - Check SSH Key File
+        run: |
+          echo "SSH Key file info:"
+          ls -la ~/.ssh/id_rsa || echo "File not found"
+          echo "File size: $(stat -c%s ~/.ssh/id_rsa 2>/dev/null || echo 'N/A') bytes"
+          echo "First line:"
+          head -1 ~/.ssh/id_rsa
+          echo "Last line:"
+          tail -1 ~/.ssh/id_rsa
+          echo "Line count:"
+          wc -l ~/.ssh/id_rsa
+          echo "Contains BEGIN marker:"
+          grep -q "BEGIN" ~/.ssh/id_rsa && echo "YES" || echo "NO"
+          echo "Contains END marker:"
+          grep -q "END" ~/.ssh/id_rsa && echo "YES" || echo "NO"
 
       - name: Validate SSH Key
         run: |
