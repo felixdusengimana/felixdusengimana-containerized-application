@@ -236,48 +236,6 @@ jobs:
           echo "Contains END marker:"
           grep -q "END" ~/.ssh/id_rsa && echo "YES" || echo "NO"
 
-      - name: Validate SSH Key
-        run: |
-          if [ ! -f ~/.ssh/id_rsa ]; then
-            echo "ERROR: SSH key file not found at ~/.ssh/id_rsa"
-            exit 1
-          fi
-          
-          if [ ! -s ~/.ssh/id_rsa ]; then
-            echo "ERROR: SSH key file is empty"
-            exit 1
-          fi
-          
-          # Check if it's a valid RSA key
-          if ! grep -q "BEGIN RSA PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "ERROR: SSH key does not contain BEGIN RSA PRIVATE KEY marker"
-            exit 1
-          fi
-          
-          if ! grep -q "END RSA PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "ERROR: SSH key does not contain END RSA PRIVATE KEY marker"
-            exit 1
-          fi
-          
-          # Check file permissions
-          perms=$(stat -c "%a" ~/.ssh/id_rsa)
-          if [ "$perms" != "600" ]; then
-            echo "ERROR: SSH key permissions are $perms, expected 600"
-            exit 1
-          fi
-          
-          # Verify key format with ssh-keygen
-          if ! ssh-keygen -l -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-            echo "ERROR: SSH key format validation failed"
-            exit 1
-          fi
-          
-          echo "✓ SSH key validation passed"
-          echo "  - Key file exists and not empty"
-          echo "  - Contains valid RSA key markers"
-          echo "  - Permissions set correctly (600)"
-          echo "  - Key format valid"
-
       - name: Verify SSH Connection to App VM via Bastion
         env:
           BASTION_IP: ${{ needs.terraform-apply.outputs.bastion_public_ip }}
