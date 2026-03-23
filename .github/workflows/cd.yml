@@ -141,23 +141,23 @@ jobs:
           app_vm_ip=$(terraform output -raw app_vm_private_ip 2>/dev/null | tail -1)
           rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null | tail -1)
           ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>/dev/null | tail -1 | cut -d'/' -f1)
-          private_key=$(terraform output -raw private_key_pem 2>/dev/null | tail -1)
+          private_key=$(terraform output -raw private_key_pem 2>/dev/null)
           
-          # Strip any remaining debug lines (just in case)
+          # Strip any remaining debug lines
           bastion_ip=$(echo "$bastion_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
           app_vm_ip=$(echo "$app_vm_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
           rds_endpoint=$(echo "$rds_endpoint" | grep -v "^\[" | grep -v "::debug" | tail -1)
           ecr_registry=$(echo "$ecr_registry" | grep -v "^\[" | grep -v "::debug" | tail -1)
           
-          # Write clean values to GITHUB_OUTPUT
+          # Write outputs to GITHUB_OUTPUT
           {
             echo "bastion_public_ip=$bastion_ip"
             echo "app_vm_private_ip=$app_vm_ip"
             echo "rds_endpoint=$rds_endpoint"
             echo "ecr_registry=$ecr_registry"
-            echo "private_key_pem<<EOF_KEY"
+            echo "private_key_pem<<PRIVATE_KEY_EOF"
             echo "$private_key"
-            echo "EOF_KEY"
+            echo "PRIVATE_KEY_EOF"
           } >> "$GITHUB_OUTPUT"
           
           set -x
