@@ -134,44 +134,28 @@ jobs:
         env:
           TF_VAR_db_master_password: ${{ secrets.DB_MASTER_PASSWORD }}
         run: |
-          set +x  # Disable command echoing
-          
-          # Capture outputs and strip any debug/command lines
-          bastion_ip=$(terraform output -raw bastion_public_ip 2>/dev/null | tail -1)
-          app_vm_ip=$(terraform output -raw app_vm_private_ip 2>/dev/null | tail -1)
-          rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null | tail -1)
-          ecr_registry=$(terraform output -raw ecr_backend_repository_url 2>/dev/null | tail -1 | cut -d'/' -f1)
-          private_key=$(terraform output -raw private_key_pem 2>/dev/null)
-          
-          # Strip any remaining debug lines
-          bastion_ip=$(echo "$bastion_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
-          app_vm_ip=$(echo "$app_vm_ip" | grep -v "^\[" | grep -v "::debug" | tail -1)
-          rds_endpoint=$(echo "$rds_endpoint" | grep -v "^\[" | grep -v "::debug" | tail -1)
-          ecr_registry=$(echo "$ecr_registry" | grep -v "^\[" | grep -v "::debug" | tail -1)
-          
-          # Debug: Show what we extracted
-          echo "=== DEBUG: Extracted Outputs ==="
-          echo "Bastion IP length: ${#bastion_ip}"
-          echo "App VM IP length: ${#app_vm_ip}"
-          echo "RDS Endpoint length: ${#rds_endpoint}"
-          echo "ECR Registry length: ${#ecr_registry}"
-          echo "Private Key line count: $(echo "$private_key" | wc -l)"
-          echo "Private Key first line: $(echo "$private_key" | head -1)"
-          echo "Private Key last line: $(echo "$private_key" | tail -1)"
-          echo "================================"
+          # Extract outputs directly and write to GITHUB_OUTPUT
+          bastion_public_ip=$(terraform output -raw bastion_public_ip)
+          app_vm_private_ip=$(terraform output -raw app_vm_private_ip)
+          rds_endpoint=$(terraform output -raw rds_endpoint)
+          ecr_backend_url=$(terraform output -raw ecr_backend_repository_url)
+          ecr_registry=$(echo "$ecr_backend_url" | cut -d'/' -f1)
+          private_key_pem=$(terraform output -raw private_key_pem)
           
           # Write outputs to GITHUB_OUTPUT
-          {
-            echo "bastion_public_ip=$bastion_ip"
-            echo "app_vm_private_ip=$app_vm_ip"
-            echo "rds_endpoint=$rds_endpoint"
-            echo "ecr_registry=$ecr_registry"
-            echo "private_key_pem<<PRIVATE_KEY_EOF"
-            echo "$private_key"
-            echo "PRIVATE_KEY_EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "bastion_public_ip=$bastion_public_ip" >> "$GITHUB_OUTPUT"
+          echo "app_vm_private_ip=$app_vm_private_ip" >> "$GITHUB_OUTPUT"
+          echo "rds_endpoint=$rds_endpoint" >> "$GITHUB_OUTPUT"
+          echo "ecr_registry=$ecr_registry" >> "$GITHUB_OUTPUT"
+          echo "private_key_pem<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$private_key_pem" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           
-          set -x
+          # Verify outputs
+          echo "✓ Bastion IP: $bastion_public_ip"
+          echo "✓ App VM IP: $app_vm_private_ip"
+          echo "✓ RDS Endpoint: $rds_endpoint"
+          echo "✓ ECR Registry: $ecr_registry"
 
       - name: Validate Terraform Outputs
         working-directory: terraform
@@ -260,7 +244,7 @@ jobs:
           mkdir -p /tmp/ansible
           cat > /tmp/ansible/hosts.ini << 'EOF'
           [app_vm]
-          ${APP_VM_IP} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${BASTION_IP}"'
+          $APP_VM_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$BASTION_IP"'
           
           [app_vm:vars]
           aws_region=${{ env.AWS_REGION }}
@@ -271,6 +255,8 @@ jobs:
           rds_password=${{ secrets.DB_MASTER_PASSWORD }}
           django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}
           EOF
+          
+          echo "=== Ansible Inventory Generated ==="
           cat /tmp/ansible/hosts.ini
 
       - name: Run Ansible Deployment Playbook
