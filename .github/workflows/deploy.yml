@@ -122,44 +122,51 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get Application Server IP
+      - name: Get Application Server IPs
         id: get-ip
         run: |
-          # Try to get IP from Terraform state or running instances
+          # Get App VM private IP
           APP_IP=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=agrimarket-app-*" \
                       "Name=instance-state-name,Values=running" \
             --query "Reservations[*].Instances[*].PrivateIpAddress" \
             --output text | head -1)
           
-          # Fallback: get Bastion IP
-          if [ -z "$APP_IP" ]; then
-            APP_IP=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=agrimarket-bastion" \
-                        "Name=instance-state-name,Values=running" \
-              --query "Reservations[*].Instances[*].PublicIpAddress" \
-              --output text)
-          fi
-          
           if [ -z "$APP_IP" ]; then
             echo "::error::Could not retrieve application server IP"
             exit 1
           fi
           
+          # Get Bastion public IP for SSH tunneling
+          BASTION_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=agrimarket-bastion" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].PublicIpAddress" \
+            --output text)
+          
+          if [ -z "$BASTION_IP" ]; then
+            echo "::error::Could not retrieve bastion IP"
+            exit 1
+          fi
+          
           echo "app_ip=$APP_IP" >> $GITHUB_OUTPUT
-          echo "Application Server IP: $APP_IP"
+          echo "bastion_ip=$BASTION_IP" >> $GITHUB_OUTPUT
+          echo "Application Server IP (Private): $APP_IP"
+          echo "Bastion IP (Public): $BASTION_IP"
 
       - name: Wait for SSH to be available
         run: |
           MAX_ATTEMPTS=30
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if nc -z -w 5 ${{ steps.get-ip.outputs.app_ip }} 22 2>/dev/null; then
-              echo "SSH is available"
+            if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+              -i ~/.ssh/id_rsa -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ steps.get-ip.outputs.bastion_ip }}" \
+              ubuntu@${{ steps.get-ip.outputs.app_ip }} "echo 'SSH is available'" 2>/dev/null; then
+              echo "SSH via bastion is available"
               exit 0
             fi
             ATTEMPT=$((ATTEMPT + 1))
-            echo "Waiting for SSH... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+            echo "Waiting for SSH via bastion... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
             sleep 10
           done
           echo "::error::SSH not available after $MAX_ATTEMPTS attempts"
@@ -168,16 +175,36 @@ jobs:
       - name: Create Private Key File
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ steps.get-ip.outputs.app_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Add SSH config for bastion jump host
+          cat > ~/.ssh/config <<EOF
+          Host bastion
+            HostName ${{ steps.get-ip.outputs.bastion_ip }}
+            User ubuntu
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+          
+          Host app
+            HostName ${{ steps.get-ip.outputs.app_ip }}
+            User ubuntu
+            IdentityFile ~/.ssh/id_rsa
+            ProxyJump bastion
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+          EOF
+          
+          chmod 600 ~/.ssh/config
+          ssh-keyscan -H ${{ steps.get-ip.outputs.bastion_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy via Ansible
         uses: dawidd6/action-ansible-playbook@v2
         with:
           playbook: ansible/playbooks/deploy.yml
           directory: ./
-          key: ${{ secrets.BASTION_SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           inventory: |
             [app]
             ${{ steps.get-ip.outputs.app_ip }} ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3
