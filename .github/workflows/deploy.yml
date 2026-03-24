@@ -236,7 +236,7 @@ jobs:
           echo "app-ip=pending" >> $GITHUB_OUTPUT
 
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ needs.detect-changes.outputs.environment }}
           path: terraform/tfplan
@@ -287,7 +287,7 @@ jobs:
           terraform init -upgrade
 
       - name: Download Terraform Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ needs.detect-changes.outputs.environment }}
           path: terraform/
