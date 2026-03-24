@@ -218,11 +218,18 @@ jobs:
           cd terraform
           rm -f tfplan tfplan.json
 
+      - name: Terraform Refresh State
+        run: |
+          cd terraform
+          echo "Syncing Terraform state with existing AWS resources..."
+          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
+          echo "✓ State synchronized"
+
       - name: Terraform Plan
         id: plan
         run: |
           cd terraform
-          terraform plan -refresh-only -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
+          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
           echo "status=success" >> $GITHUB_OUTPUT
         continue-on-error: true
 
@@ -292,7 +299,7 @@ jobs:
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -refresh-only -auto-approve tfplan
+          terraform apply -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: outputs
