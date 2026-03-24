@@ -154,24 +154,6 @@ jobs:
           echo "Application Server IP (Private): ${APP_IP}"
           echo "Bastion IP (Public): ${BASTION_IP}"
 
-      - name: Wait for SSH to be available
-        run: |
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
-              -i ~/.ssh/id_rsa -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ steps.get-ip.outputs.bastion_ip }}" \
-              ubuntu@${{ steps.get-ip.outputs.app_ip }} "echo 'SSH is available'" 2>/dev/null; then
-              echo "SSH via bastion is available"
-              exit 0
-            fi
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Waiting for SSH via bastion... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
-            sleep 10
-          done
-          echo "::error::SSH not available after $MAX_ATTEMPTS attempts"
-          exit 1
-
       - name: Create Private Key File
         run: |
           mkdir -p ~/.ssh
@@ -199,6 +181,22 @@ jobs:
           chmod 600 ~/.ssh/config
           ssh-keyscan -H ${{ steps.get-ip.outputs.bastion_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: Wait for SSH to be available
+        run: |
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            if ssh -o ConnectTimeout=10 -i ~/.ssh/id_rsa app "echo 'SSH is available'" 2>/dev/null; then
+              echo "SSH via bastion is available"
+              exit 0
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Waiting for SSH via bastion... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+            sleep 10
+          done
+          echo "::error::SSH not available after $MAX_ATTEMPTS attempts"
+          exit 1
+
       - name: Deploy via Ansible
         uses: dawidd6/action-ansible-playbook@v2
         with:
@@ -207,7 +205,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           inventory: |
             [app]
-            ${{ steps.get-ip.outputs.app_ip }} ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3
+            ${{ steps.get-ip.outputs.app_ip }} ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args="-o ProxyCommand=\"ssh -W %h:%p -i ~/.ssh/id_rsa ubuntu@${{ steps.get-ip.outputs.bastion_ip }}\" -o StrictHostKeyChecking=no"
           options: |
             -vv \
             --extra-vars "backend_image=${{ needs.build-and-push.outputs.backend_image }}" \
@@ -224,8 +222,8 @@ jobs:
           MAX_ATTEMPTS=10
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if curl -f http://${{ steps.get-ip.outputs.app_ip }}:8000/api/products/ 2>/dev/null; then
-              echo "✅ Backend API is healthy"
+            if ssh -i ~/.ssh/id_rsa app "curl -f http://localhost:8000/api/products/" 2>/dev/null; then
+              echo "Backend API is healthy"
               exit 0
             fi
             ATTEMPT=$((ATTEMPT + 1))
@@ -241,8 +239,8 @@ jobs:
           MAX_ATTEMPTS=10
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if curl -f http://${{ steps.get-ip.outputs.app_ip }}:3000/ 2>/dev/null; then
-              echo "✅ Frontend is healthy"
+            if ssh -i ~/.ssh/id_rsa app "curl -f http://localhost:3000/" 2>/dev/null; then
+              echo "Frontend is healthy"
               exit 0
             fi
             ATTEMPT=$((ATTEMPT + 1))
@@ -257,11 +255,11 @@ jobs:
         run: |
           echo "Running smoke tests..."
           
-          # Test backend API endpoints
+          # Test backend API endpoints via SSH tunnel
           echo "Testing backend endpoints..."
-          curl -v http://${{ steps.get-ip.outputs.app_ip }}:8000/api/products/ | head -c 200
+          ssh -i ~/.ssh/id_rsa app "curl -s http://localhost:8000/api/products/" | head -c 200
           
-          echo -e "\n✅ Smoke tests completed"
+          echo -e "\nSmoke tests completed"
         continue-on-error: true
 
   send-notifications:
