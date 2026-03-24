@@ -22,13 +22,8 @@
       when: ansible_os_family is defined and ansible_os_family == "Debian"
 
     - name: Display deployment information
-      debug:
-        msg: |
-          Deployment Starting:
-          - Backend Image: {{ backend_image | default('not specified') }}
-          - Frontend Image: {{ frontend_image | default('not specified') }}
-          - App Directory: {{ app_dir }}
-          - AWS Region: {{ aws_region }}
+      set_fact:
+        deployment_started: true
 
   tasks:
     - name: Ensure Docker is installed and running
@@ -39,10 +34,43 @@
           failed_when: false
           changed_when: false
 
-        - name: Display Docker version
-          debug:
-            msg: "Docker is installed: {{ docker_check.stdout }}"
-          when: docker_check.rc == 0
+        - name: Install Docker if not present
+          block:
+            - name: Update apt and install Docker dependencies
+              apt:
+                name: 
+                  - apt-transport-https
+                  - ca-certificates
+                  - curl
+                  - gnupg
+                  - lsb-release
+                update_cache: yes
+              when: docker_check.rc != 0
+
+            - name: Add Docker GPG key
+              apt_key:
+                url: https://download.docker.com/linux/ubuntu/gpg
+                state: present
+              when: docker_check.rc != 0
+
+            - name: Add Docker repository
+              apt_repository:
+                repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+                state: present
+              when: docker_check.rc != 0
+
+            - name: Install Docker
+              apt:
+                name: docker-ce
+                update_cache: yes
+              when: docker_check.rc != 0
+
+            - name: Install Docker Compose
+              apt:
+                name: docker-compose
+              ignore_errors: yes
+              when: docker_check.rc != 0
+          when: docker_check.rc != 0
 
         - name: Start Docker service
           systemd:
@@ -50,6 +78,12 @@
             state: started
             enabled: yes
           when: ansible_os_family is defined and ansible_os_family == "Debian"
+
+        - name: Add ubuntu user to docker group
+          user:
+            name: "{{ app_user }}"
+            groups: docker
+            append: yes
 
     - name: Ensure Docker Compose is available
       block:
