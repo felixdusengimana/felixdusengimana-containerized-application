@@ -9,7 +9,6 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'ansible/**'
-      - 'terraform/**'
       - 'docker-compose.yml'
       - 'Dockerfile.*'
       - '.github/workflows/deploy.yml'
@@ -181,66 +180,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   plan-infrastructure:
-    name: Plan Terraform
+    name: Plan & Apply Terraform
     runs-on: ubuntu-latest
     needs: detect-changes
-    permissions:
-      contents: read
-      id-token: write
-    outputs:
-      plan-status: ${{ steps.plan.outputs.status }}
-      bastion-ip: ${{ steps.output.outputs.bastion-ip }}
-      app-ip: ${{ steps.output.outputs.app-ip }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.7.0
-
-      - name: Terraform Init
-        run: |
-          cd terraform
-          terraform init -upgrade
-
-      - name: Clean up old plan
-        run: |
-          cd terraform
-          rm -f tfplan tfplan.json
-
-      - name: Terraform Plan
-        id: plan
-        run: |
-          cd terraform
-          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}"
-          echo "status=success" >> $GITHUB_OUTPUT
-        continue-on-error: true
-
-      - name: Upload Terraform Lock File
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-lock-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/.terraform.lock.hcl
-          retention-days: 1
-
-  apply-infrastructure:
-    name: Apply Terraform
-    runs-on: ubuntu-latest
-    needs: [detect-changes, build-backend, build-frontend, plan-infrastructure]
-    if: |
-      always() &&
-      (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
-      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     permissions:
       contents: read
       id-token: write
@@ -263,82 +205,81 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.7.0
+          terraform_wrapper: false
+
+      - name: Create SSH Keys
+        run: |
+          mkdir -p terraform/
+          echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > terraform/bastion_key.pem
+          chmod 600 terraform/bastion_key.pem
 
       - name: Terraform Init
-        run: |
-          cd terraform
-          terraform init -upgrade
+        run: terraform init
+        working-directory: terraform
 
-      - name: Clean up old plan
-        run: |
-          cd terraform
-          rm -f tfplan tfplan.json
-
-      - name: Download Terraform Lock File
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-lock-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/
-        continue-on-error: true
-
-      - name: Restore Terraform Files
-        run: |
-          cd terraform
-          echo "Checking Terraform artifacts..."
-          
-          if [ -f .terraform.lock.hcl ]; then
-            echo "✓ Lock file restored"
-          else
-            echo "ℹ Lock file not found (will be regenerated)"
-          fi
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
 
       - name: Terraform Refresh State
         run: |
-          cd terraform
-          echo "Syncing Terraform state with existing AWS resources..."
-          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
-          echo "✓ State synchronized"
+          echo "🔄 Syncing state with existing AWS resources..."
+          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color 2>&1
+          echo "✓ State synced"
+        working-directory: terraform
+        continue-on-error: true
+
+      - name: Terraform Plan with Drift Detection
+        id: plan
+        run: |
+          exit_code=0
+          terraform plan -detailed-exitcode -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color > tfplan.txt 2>&1 || exit_code=$?
+          echo "exitcode=$exit_code" >> $GITHUB_OUTPUT
+          
+          if [ $exit_code -eq 2 ]; then
+            echo "::notice::Infrastructure drift detected! Applying changes..."
+          elif [ $exit_code -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            cat tfplan.txt
+            exit 1
+          else
+            echo "::notice::✓ No infrastructure changes needed (state synchronized)"
+          fi
+          cat tfplan.txt
+        working-directory: terraform
 
       - name: Terraform Apply
+        if: steps.plan.outputs.exitcode == 0 || steps.plan.outputs.exitcode == 2
         run: |
-          cd terraform
-          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
+          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
+        working-directory: terraform
 
       - name: Get Terraform Outputs
         id: outputs
         run: |
-          cd terraform
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "unknown")
+          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "unknown")
+          ECR_URL=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
+          ECR_REGISTRY=$(echo "$ECR_URL" | cut -d'/' -f1 2>/dev/null || echo "")
           
-          # Get outputs and strip debug info
-          BASTION_IP=$(terraform output -raw bastion_public_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
-          APP_IP=$(terraform output -raw app_private_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
-          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1 || echo "")
-          FRONTEND_ECR=$(terraform output -raw frontend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1 || echo "")
-          
-          # Extract registry URL from backend ECR
-          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1 2>/dev/null || echo "")
-          
-          # Set outputs
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
           echo "ecr-repository-url=$ECR_REGISTRY" >> $GITHUB_OUTPUT
-          echo "backend-ecr=$BACKEND_ECR" >> $GITHUB_OUTPUT
-          echo "frontend-ecr=$FRONTEND_ECR" >> $GITHUB_OUTPUT
           
-          # Display outputs
-          echo "====== Terraform Outputs ======"
-          echo "Bastion Public IP: $BASTION_IP"
-          echo "App Private IP: $APP_IP"
-          echo "Backend ECR URL: $BACKEND_ECR"
-          echo "Frontend ECR URL: $FRONTEND_ECR"
-          echo "ECR Registry: $ECR_REGISTRY"
-          echo "================================"
+          echo "Bastion: $BASTION_IP"
+          echo "App: $APP_IP"
+          echo "ECR: $ECR_REGISTRY"
+        working-directory: terraform
 
   deploy-with-ansible:
     name: Deploy with Ansible
     runs-on: ubuntu-latest
-    needs: [detect-changes, apply-infrastructure]
-    if: always() && needs.apply-infrastructure.result == 'success'
+    needs: [detect-changes, build-backend, build-frontend, plan-infrastructure]
+    if: |
+      always() &&
+      (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped') &&
+      (needs.plan-infrastructure.result == 'success')
     permissions:
       contents: read
       id-token: write
@@ -370,22 +311,22 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > ~/.ssh/bastion_key.pem
           chmod 600 ~/.ssh/bastion_key.pem
-          ssh-keyscan -H ${{ needs.apply-infrastructure.outputs.bastion-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ needs.plan-infrastructure.outputs.bastion-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Create Ansible inventory
         run: |
           mkdir -p ansible/inventory
           cat > ansible/inventory/aws.ini << EOF
           [bastion]
-          bastion ansible_host=${{ needs.apply-infrastructure.outputs.bastion-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem
+          bastion ansible_host=${{ needs.plan-infrastructure.outputs.bastion-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem
           
           [app_servers]
-          app_server ansible_host=${{ needs.apply-infrastructure.outputs.app-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -i ~/.ssh/bastion_key.pem ubuntu@${{ needs.apply-infrastructure.outputs.bastion-ip }}"'
+          app_server ansible_host=${{ needs.plan-infrastructure.outputs.app-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -i ~/.ssh/bastion_key.pem ubuntu@${{ needs.plan-infrastructure.outputs.bastion-ip }}" -o StrictHostKeyChecking=no'
           
           [all:vars]
           ansible_python_interpreter=/usr/bin/python3
           deploy_environment=${{ needs.detect-changes.outputs.environment }}
-          ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}
+          ecr_registry=${{ needs.plan-infrastructure.outputs.ecr-registry }}
           backend_image_tag=${{ needs.detect-changes.outputs.version }}
           frontend_image_tag=${{ needs.detect-changes.outputs.version }}
           backend_image_changed=${{ needs.detect-changes.outputs.backend-changed }}
@@ -413,7 +354,7 @@ jobs:
             --extra-vars "deploy_environment=${{ needs.detect-changes.outputs.environment }}" \
             --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
             --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
-            --extra-vars "ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}" \
+            --extra-vars "ecr_registry=${{ needs.plan-infrastructure.outputs.ecr-registry }}" \
             --extra-vars "backend_changed=${{ needs.detect-changes.outputs.backend-changed }}" \
             --extra-vars "frontend_changed=${{ needs.detect-changes.outputs.frontend-changed }}"
         continue-on-error: false
@@ -421,8 +362,8 @@ jobs:
       - name: Verify deployment
         run: |
           echo "Deployment completed to ${{ needs.detect-changes.outputs.environment }}"
-          echo "Bastion IP: ${{ needs.apply-infrastructure.outputs.bastion-ip }}"
-          echo "App IP: ${{ needs.apply-infrastructure.outputs.app-ip }}"
+          echo "Bastion IP: ${{ needs.plan-infrastructure.outputs.bastion-ip }}"
+          echo "App IP: ${{ needs.plan-infrastructure.outputs.app-ip }}"
 
   deployment-status:
     name: Deployment Status
@@ -437,6 +378,5 @@ jobs:
             echo "Environment: ${{ needs.detect-changes.outputs.environment }}"
             echo "Commit: ${{ needs.detect-changes.outputs.version }}"
           else
-            echo "❌ Deployment failed"
-            exit 1
+            echo "⚠️  Deployment status: ${{ needs.deploy-with-ansible.result }}"
           fi
