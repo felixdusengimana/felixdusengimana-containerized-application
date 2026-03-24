@@ -222,7 +222,7 @@ jobs:
         id: plan
         run: |
           cd terraform
-          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
+          terraform plan -refresh-only -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
           echo "status=success" >> $GITHUB_OUTPUT
         continue-on-error: true
 
@@ -292,7 +292,7 @@ jobs:
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -auto-approve tfplan
+          terraform apply -refresh-only -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: outputs
