@@ -8,6 +8,8 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'ansible/**'
+      - 'terraform/**'
       - 'docker-compose.yml'
       - 'Dockerfile.*'
       - '.github/workflows/deploy.yml'
@@ -296,17 +298,31 @@ jobs:
         id: outputs
         run: |
           cd terraform
-          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
-          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
-          ECR_URL=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
           
+          # Get outputs with better error handling
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "unknown")
+          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "unknown")
+          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
+          FRONTEND_ECR=$(terraform output -raw frontend_ecr_repository_url 2>/dev/null || echo "")
+          
+          # Extract registry URL from backend ECR (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com)
+          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1 2>/dev/null || echo "")
+          
+          # Set outputs
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
-          echo "ecr-repository-url=$ECR_URL" >> $GITHUB_OUTPUT
+          echo "ecr-repository-url=$ECR_REGISTRY" >> $GITHUB_OUTPUT
+          echo "backend-ecr=$BACKEND_ECR" >> $GITHUB_OUTPUT
+          echo "frontend-ecr=$FRONTEND_ECR" >> $GITHUB_OUTPUT
           
-          echo "Bastion IP: $BASTION_IP"
-          echo "App IP: $APP_IP"
-          echo "ECR URL: $ECR_URL"
+          # Display outputs (for debugging)
+          echo "====== Terraform Outputs ======"
+          echo "Bastion Public IP: $BASTION_IP"
+          echo "App Private IP: $APP_IP"
+          echo "Backend ECR URL: $BACKEND_ECR"
+          echo "Frontend ECR URL: $FRONTEND_ECR"
+          echo "ECR Registry: $ECR_REGISTRY"
+          echo "================================"
 
   deploy-with-ansible:
     name: Deploy with Ansible
