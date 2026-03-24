@@ -218,13 +218,6 @@ jobs:
           cd terraform
           rm -f tfplan tfplan.json
 
-      - name: Terraform Refresh State
-        run: |
-          cd terraform
-          echo "Syncing Terraform state with existing AWS resources..."
-          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
-          echo "✓ State synchronized"
-
       - name: Terraform Plan
         id: plan
         run: |
@@ -255,14 +248,6 @@ jobs:
           name: terraform-lock-${{ needs.detect-changes.outputs.environment }}
           path: terraform/.terraform.lock.hcl
           retention-days: 1
-
-      - name: Upload Terraform State
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfstate-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/terraform.tfstate
-          retention-days: 1
-        continue-on-error: true
 
   apply-infrastructure:
     name: Apply Terraform
@@ -318,30 +303,23 @@ jobs:
           path: terraform/
         continue-on-error: true
 
-      - name: Download Terraform State
-        uses: actions/download-artifact@v4
-        with:
-          name: tfstate-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/
-        continue-on-error: true
-
       - name: Restore Terraform Files
         run: |
           cd terraform
           echo "Checking Terraform artifacts..."
-          
-          if [ -f terraform.tfstate ]; then
-            echo "✓ State file restored"
-            ls -lh terraform.tfstate
-          else
-            echo "⚠ State file not found (first deployment)"
-          fi
           
           if [ -f .terraform.lock.hcl ]; then
             echo "✓ Lock file restored"
           else
             echo "ℹ Lock file not found (will be regenerated)"
           fi
+
+      - name: Terraform Refresh State
+        run: |
+          cd terraform
+          echo "Syncing Terraform state with existing AWS resources..."
+          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
+          echo "✓ State synchronized"
 
       - name: Terraform Apply
         run: |
