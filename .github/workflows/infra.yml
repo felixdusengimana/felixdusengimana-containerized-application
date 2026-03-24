@@ -1,0 +1,321 @@
+name: Infrastructure Pipeline
+
+on:
+  push:
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
+      - '.github/workflows/infra.yml'
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: '1.5.0'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan & Drift Detection
+    runs-on: ubuntu-latest
+    outputs:
+      drift_detected: ${{ steps.plan.outputs.exitcode == 2 }}
+      plan_has_error: ${{ steps.plan.outputs.exitcode == 1 }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create SSH Keys for Terraform
+        run: |
+          mkdir -p terraform/
+          echo "${{ secrets.BASTION_SSH_PUBLIC_KEY }}" > terraform/bastion_key.pub
+          echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > terraform/bastion_key
+          chmod 600 terraform/bastion_key
+        env:
+          BASTION_SSH_PUBLIC_KEY: ${{ secrets.BASTION_SSH_PUBLIC_KEY }}
+          BASTION_SSH_PRIVATE_KEY: ${{ secrets.BASTION_SSH_PRIVATE_KEY }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
+
+      - name: Terraform Plan with Drift Detection
+        id: plan
+        run: |
+          exit_code=0
+          terraform plan -detailed-exitcode -out=tfplan -no-color > tfplan.txt 2>&1 || exit_code=$?
+          echo "exitcode=$exit_code" >> $GITHUB_OUTPUT
+          
+          if [ $exit_code -eq 2 ]; then
+            echo "::notice::Infrastructure drift detected! Changes require approval."
+          elif [ $exit_code -eq 1 ]; then
+            echo "::error::Terraform plan failed with errors"
+            cat tfplan.txt
+            exit 1
+          else
+            echo "::notice::No infrastructure changes detected"
+          fi
+          cat tfplan.txt
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_bastion_ssh_key_path: "${{ github.workspace }}/terraform/bastion_key"
+          TF_VAR_rds_master_username: ${{ secrets.RDS_USERNAME }}
+          TF_VAR_rds_master_password: ${{ secrets.RDS_PASSWORD }}
+
+      - name: Upload Terraform Plan Artifact
+        uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.exitcode == 2 || steps.plan.outputs.exitcode == 0
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          retention-days: 1
+
+      - name: Upload Plan Summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tfplan-summary
+          path: terraform/tfplan.txt
+          retention-days: 1
+
+      - name: Comment on PR with Plan
+        if: github.event_name == 'pull_request' && steps.plan.outputs.exitcode != 1
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('terraform/tfplan.txt', 'utf8');
+            const maxLength = 30000;
+            const truncatedPlan = planOutput.length > maxLength 
+              ? planOutput.substring(0, maxLength) + '\n\n... (truncated)'
+              : planOutput;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan\n\`\`\`terraform\n${truncatedPlan}\n\`\`\``
+            });
+
+      - name: Send Drift Detection Email
+        if: steps.plan.outputs.exitcode == 2
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: '🚨 Infrastructure Drift Detected - Manual Review Required'
+          html_body: |
+            <h2>Infrastructure Drift Alert</h2>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Trigger:</strong> ${{ github.event_name }} to ${{ github.ref_name }}</p>
+            <p><strong>Changes Detected:</strong> Infrastructure differs from Terraform state</p>
+            
+            <h3>Actions Required:</h3>
+            <ol>
+              <li>Review the proposed changes in the GitHub Actions run</li>
+              <li>Verify changes are intentional</li>
+              <li>Click "Approve and Deploy" or "Reject" in the Actions tab</li>
+            </ol>
+            
+            <p>
+              <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" 
+                 style="background-color: #2ea44f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                View Deployment Details
+              </a>
+            </p>
+            
+            <hr>
+            <p><small>This is an automated notification from AgriMarket CI/CD Pipeline</small></p>
+          to: ${{ secrets.MAIL_TO }}
+          from: GitHub Actions <actions@github.com>
+        continue-on-error: true
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: needs.terraform-plan.outputs.drift_detected == 'true'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create SSH Keys
+        run: |
+          mkdir -p terraform/
+          echo "${{ secrets.BASTION_SSH_PUBLIC_KEY }}" > terraform/bastion_key.pub
+          echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > terraform/bastion_key
+          chmod 600 terraform/bastion_key
+        env:
+          BASTION_SSH_PUBLIC_KEY: ${{ secrets.BASTION_SSH_PUBLIC_KEY }}
+          BASTION_SSH_PRIVATE_KEY: ${{ secrets.BASTION_SSH_PRIVATE_KEY }}
+
+      - name: Verify SSH Key Format
+        run: |
+          chmod 600 terraform/bastion_key
+          ssh-keygen -l -f terraform/bastion_key || \
+            (echo "::error::SSH Private Key is invalid! Check your GitHub Secrets." && exit 1)
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -no-color tfplan
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_bastion_ssh_key_path: "${{ github.workspace }}/terraform/bastion_key"
+          TF_VAR_rds_master_username: ${{ secrets.RDS_USERNAME }}
+          TF_VAR_rds_master_password: ${{ secrets.RDS_PASSWORD }}
+
+      - name: Capture Terraform Outputs
+        id: outputs
+        run: |
+          terraform output -raw bastion_public_ip > bastion_ip.txt 2>/dev/null || echo "unknown" > bastion_ip.txt
+          terraform output -json > outputs.json
+          cat outputs.json
+        working-directory: terraform
+
+      - name: Upload Infrastructure Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs
+          path: |
+            terraform/outputs.json
+            terraform/bastion_ip.txt
+          retention-days: 7
+
+      - name: Send Success Notification
+        uses: dawidd6/action-send-mail@v3
+        if: success()
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: '✅ Infrastructure Deployment Successful'
+          html_body: |
+            <h2>Infrastructure Deployment Complete</h2>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Deployment Status:</strong> ✅ SUCCESS</p>
+            
+            <h3>Infrastructure Changes Applied</h3>
+            <p>Your AWS infrastructure has been successfully provisioned/updated.</p>
+            
+            <h3>Next Steps:</h3>
+            <ol>
+              <li>Wait for the Application Deployment workflow to start automatically</li>
+              <li>Monitor the deployment progress in the Actions tab</li>
+              <li>Verify your application is running once deployment completes</li>
+            </ol>
+            
+            <p>
+              <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" 
+                 style="background-color: #2ea44f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                View Deployment Details
+              </a>
+            </p>
+          to: ${{ secrets.MAIL_TO }}
+          from: GitHub Actions <actions@github.com>
+        continue-on-error: true
+
+      - name: Send Failure Notification
+        uses: dawidd6/action-send-mail@v3
+        if: failure()
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: '❌ Infrastructure Deployment Failed'
+          html_body: |
+            <h2>Infrastructure Deployment Failed</h2>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Deployment Status:</strong> ❌ FAILED</p>
+            
+            <p>Infrastructure deployment encountered an error. Please review the logs immediately.</p>
+            
+            <p>
+              <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" 
+                 style="background-color: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                View Error Details
+              </a>
+            </p>
+          to: ${{ secrets.MAIL_TO }}
+          from: GitHub Actions <actions@github.com>
+        continue-on-error: true
+
+  trigger-deployment:
+    name: Trigger Application Deployment
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: success()
+
+    steps:
+      - name: Trigger Deploy Workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: context.ref
+            });
