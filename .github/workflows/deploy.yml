@@ -221,6 +221,39 @@ jobs:
         run: terraform validate
         working-directory: terraform
 
+      - name: Import Existing AWS Resources
+        run: |
+          echo "🔗 Importing existing AWS resources into Terraform state..."
+          
+          # Import IAM Role
+          echo "  → IAM Role: agrimarket-ec2-role"
+          terraform import module.compute.aws_iam_role.ec2_role agrimarket-ec2-role 2>&1 || true
+          
+          # Import ECR Repositories
+          echo "  → ECR Repository: agrimarket-backend"
+          terraform import module.compute.aws_ecr_repository.backend agrimarket-backend 2>&1 || true
+          
+          echo "  → ECR Repository: agrimarket-frontend"
+          terraform import module.compute.aws_ecr_repository.frontend agrimarket-frontend 2>&1 || true
+          
+          # Find and import VPC
+          echo "  → Finding existing VPC..."
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=agrimarket" --query 'Vpcs[0].VpcId' --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+          
+          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+            echo "  → VPC: $VPC_ID"
+            terraform import module.vpc.aws_vpc.main "$VPC_ID" 2>&1 || true
+          else
+            echo "  ⚠️  No existing VPC found with tag Project=agrimarket (will be created)"
+          fi
+          
+          echo "✓ Import complete"
+        working-directory: terraform
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
       - name: Terraform Refresh State
         run: |
           echo "🔄 Syncing state with existing AWS resources..."
