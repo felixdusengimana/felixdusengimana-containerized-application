@@ -249,6 +249,13 @@ jobs:
           path: terraform/tfplan
           retention-days: 1
 
+      - name: Upload Terraform State
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfstate-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/.terraform
+          retention-days: 1
+
   apply-infrastructure:
     name: Apply Terraform
     runs-on: ubuntu-latest
@@ -294,6 +301,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/
+
+      - name: Download Terraform State
+        uses: actions/download-artifact@v4
+        with:
+          name: tfstate-${{ needs.detect-changes.outputs.environment }}
           path: terraform/
 
       - name: Terraform Apply
