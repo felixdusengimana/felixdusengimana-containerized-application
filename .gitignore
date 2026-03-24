@@ -62,6 +62,11 @@ config/local.py
 !.ssh/.gitkeep
 terraform/bastion_key.pem*
 
+# Ansible - Dynamic inventory generated at runtime
+ansible/inventory/*.ini
+!ansible/inventory/.gitkeep
+ansible/**/vault.yml
+
 # Logs
 *.log
 logs/

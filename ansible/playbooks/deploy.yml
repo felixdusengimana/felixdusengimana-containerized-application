@@ -7,7 +7,7 @@
   roles:
     - role: bastion
       vars:
-        environment: "{{ environment | default('staging') }}"
+        deploy_environment: "{{ deploy_environment | default('staging') }}"
         app_server_ip: "{{ groups['app_servers'][0] }}"
 
 - name: Deploy Application to App Server
@@ -25,14 +25,14 @@
   roles:
     - role: app_server
       vars:
-        environment: "{{ environment | default('staging') }}"
+        deploy_environment: "{{ deploy_environment | default('staging') }}"
         django_secret_key: "{{ django_secret_key | default('changeme') }}"
         postgres_password: "{{ postgres_password | default('changeme') }}"
         ecr_registry: "{{ ecr_registry | default('') }}"
         backend_image_changed: "{{ backend_changed | default('true') }}"
         frontend_image_changed: "{{ frontend_changed | default('true') }}"
-        backend_image_tag: "latest-{{ environment }}"
-        frontend_image_tag: "latest-{{ environment }}"
+        backend_image_tag: "latest-{{ deploy_environment }}"
+        frontend_image_tag: "latest-{{ deploy_environment }}"
 
   post_tasks:
     - name: Verify application deployment

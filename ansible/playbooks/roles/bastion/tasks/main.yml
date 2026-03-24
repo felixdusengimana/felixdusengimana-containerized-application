@@ -48,11 +48,5 @@
 - name: Bastion | Display Bastion readiness status
   debug:
     msg: |
-      🚀 Bastion host ({{ inventory_hostname }}) is ready!
+      🚀 Bastion host ({{ inventory_hostname }}) is ready for {{ deploy_environment }}!
       SSH Forwarding enabled for app server access
-
-handlers:
-  - name: restart ssh
-    service:
-      name: ssh
-      state: restarted

@@ -1,0 +1,3 @@
+# This directory holds Ansible inventory files
+# NOTE: *.ini files are generated dynamically at runtime by GitHub Actions
+# They are NOT committed to git for security reasons

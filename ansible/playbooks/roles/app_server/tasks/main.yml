@@ -105,7 +105,7 @@
   debug:
     msg: |
       ✅ Application deployed successfully!
-      Environment: {{ environment }}
+      Environment: {{ deploy_environment }}
       Backend: http://{{ inventory_hostname }}:8000
       Frontend: http://{{ inventory_hostname }}:3000
       PostgreSQL: {{ inventory_hostname }}:5432

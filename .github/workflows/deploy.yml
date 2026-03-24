@@ -374,7 +374,7 @@ jobs:
           
           [all:vars]
           ansible_python_interpreter=/usr/bin/python3
-          environment=${{ needs.detect-changes.outputs.environment }}
+          deploy_environment=${{ needs.detect-changes.outputs.environment }}
           ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}
           backend_image_tag=${{ needs.detect-changes.outputs.version }}
           frontend_image_tag=${{ needs.detect-changes.outputs.version }}
@@ -400,7 +400,7 @@ jobs:
           cd ansible
           ansible-playbook -vv playbooks/deploy.yml \
             -i inventory/aws.ini \
-            --extra-vars "environment=${{ needs.detect-changes.outputs.environment }}" \
+            --extra-vars "deploy_environment=${{ needs.detect-changes.outputs.environment }}" \
             --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
             --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
             --extra-vars "ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}" \

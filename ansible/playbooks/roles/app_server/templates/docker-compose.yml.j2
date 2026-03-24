@@ -33,7 +33,7 @@ services:
       - DB_PORT=5432
       - SECRET_KEY={{ django_secret_key }}
       - DEBUG=False
-      - ENVIRONMENT={{ environment }}
+      - ENVIRONMENT={{ deploy_environment }}
     depends_on:
       postgres:
         condition: service_healthy
