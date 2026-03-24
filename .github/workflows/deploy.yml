@@ -211,6 +211,11 @@ jobs:
           cd terraform
           terraform init -upgrade
 
+      - name: Clean up old plan
+        run: |
+          cd terraform
+          rm -f tfplan tfplan.json
+
       - name: Terraform Plan
         id: plan
         run: |
@@ -270,6 +275,11 @@ jobs:
         run: |
           cd terraform
           terraform init -upgrade
+
+      - name: Clean up old plan
+        run: |
+          cd terraform
+          rm -f tfplan tfplan.json
 
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
