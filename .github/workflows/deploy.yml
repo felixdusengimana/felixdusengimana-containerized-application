@@ -130,7 +130,7 @@ jobs:
             --filters "Name=tag:Name,Values=agrimarket-app-*" \
                       "Name=instance-state-name,Values=running" \
             --query "Reservations[*].Instances[*].PrivateIpAddress" \
-            --output text | head -1)
+            --output text | xargs)
           
           if [ -z "$APP_IP" ]; then
             echo "::error::Could not retrieve application server IP"
@@ -142,17 +142,17 @@ jobs:
             --filters "Name=tag:Name,Values=agrimarket-bastion" \
                       "Name=instance-state-name,Values=running" \
             --query "Reservations[*].Instances[*].PublicIpAddress" \
-            --output text)
+            --output text | xargs)
           
           if [ -z "$BASTION_IP" ]; then
             echo "::error::Could not retrieve bastion IP"
             exit 1
           fi
           
-          echo "app_ip=$APP_IP" >> $GITHUB_OUTPUT
-          echo "bastion_ip=$BASTION_IP" >> $GITHUB_OUTPUT
-          echo "Application Server IP (Private): $APP_IP"
-          echo "Bastion IP (Public): $BASTION_IP"
+          echo "app_ip=${APP_IP}" >> $GITHUB_OUTPUT
+          echo "bastion_ip=${BASTION_IP}" >> $GITHUB_OUTPUT
+          echo "Application Server IP (Private): ${APP_IP}"
+          echo "Bastion IP (Public): ${BASTION_IP}"
 
       - name: Wait for SSH to be available
         run: |
