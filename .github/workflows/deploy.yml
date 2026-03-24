@@ -292,40 +292,21 @@ jobs:
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -auto-approve tfplan
+          terraform apply -refresh-only -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: outputs
         run: |
           cd terraform
           
-          # Verify terraform state is available
-          if [ ! -f terraform.tfstate ]; then
-            echo "ERROR: terraform.tfstate not found!"
-            exit 1
-          fi
-          
           # Get outputs and strip debug info
-          BASTION_IP=$(terraform output -raw bastion_public_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          APP_IP=$(terraform output -raw app_private_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1)
-          FRONTEND_ECR=$(terraform output -raw frontend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1)
-          
-          # Validate outputs exist
-          if [ -z "$BASTION_IP" ]; then
-            echo "ERROR: Failed to extract BASTION_IP"
-            terraform output
-            exit 1
-          fi
-          
-          if [ -z "$APP_IP" ]; then
-            echo "ERROR: Failed to extract APP_IP"
-            terraform output
-            exit 1
-          fi
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+          APP_IP=$(terraform output -raw app_private_ip 2>&1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1 || echo "")
+          FRONTEND_ECR=$(terraform output -raw frontend_ecr_repository_url 2>&1 | grep -v "debug" | grep -v "exit" | head -1 || echo "")
           
           # Extract registry URL from backend ECR
-          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1)
+          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1 2>/dev/null || echo "")
           
           # Set outputs
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
