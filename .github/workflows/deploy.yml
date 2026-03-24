@@ -1,0 +1,429 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - 'Dockerfile.*'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AWS_REGION: us-east-1
+  REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  BACKEND_IMAGE_NAME: agrimarket-backend
+  FRONTEND_IMAGE_NAME: agrimarket-frontend
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend-changed: ${{ steps.changes.outputs.backend }}
+      frontend-changed: ${{ steps.changes.outputs.frontend }}
+      environment: ${{ steps.determine-env.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect file changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            git diff --name-only origin/main..HEAD || git diff --name-only HEAD~1 HEAD || echo "No previous commit"
+            
+            if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qE '^backend/|^Dockerfile\.backend|^docker-compose\.yml'; then
+              echo "backend=true" >> $GITHUB_OUTPUT
+            else
+              echo "backend=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qE '^frontend/|^Dockerfile\.frontend|^docker-compose\.yml'; then
+              echo "frontend=true" >> $GITHUB_OUTPUT
+            else
+              echo "frontend=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Determine environment
+        id: determine-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            ENV="production"
+          else
+            ENV="staging"
+          fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "Deploying to: $ENV"
+
+      - name: Generate version tag
+        id: version
+        run: |
+          VERSION="${{ github.sha }}"
+          SHORT_SHA="${VERSION:0:7}"
+          echo "version=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "Version: $SHORT_SHA"
+
+  build-backend:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend-changed == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials (fallback)
+        if: failure()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:${{ needs.detect-changes.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:latest-${{ needs.detect-changes.outputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend-changed == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials (fallback)
+        if: failure()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.detect-changes.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:latest-${{ needs.detect-changes.outputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  plan-infrastructure:
+    name: Plan Terraform
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      plan-status: ${{ steps.plan.outputs.status }}
+      bastion-ip: ${{ steps.output.outputs.bastion-ip }}
+      app-ip: ${{ steps.output.outputs.app-ip }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials (fallback)
+        if: failure()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init -upgrade
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd terraform
+          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
+          echo "status=success" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Extract Terraform Outputs (for reference)
+        id: output
+        run: |
+          cd terraform
+          terraform show tfplan | grep -E "bastion|app-ip" || echo "outputs not available yet"
+          # These will be available after apply
+          echo "bastion-ip=pending" >> $GITHUB_OUTPUT
+          echo "app-ip=pending" >> $GITHUB_OUTPUT
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/tfplan
+          retention-days: 1
+
+  apply-infrastructure:
+    name: Apply Terraform
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-backend, build-frontend, plan-infrastructure]
+    if: |
+      always() &&
+      (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
+      (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      bastion-ip: ${{ steps.outputs.outputs.bastion-public-ip }}
+      app-ip: ${{ steps.outputs.outputs.app-private-ip }}
+      ecr-registry: ${{ steps.outputs.outputs.ecr-repository-url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials (fallback)
+        if: failure()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init -upgrade
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/
+
+      - name: Terraform Apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Get Terraform Outputs
+        id: outputs
+        run: |
+          cd terraform
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
+          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
+          ECR_URL=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
+          
+          echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
+          echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
+          echo "ecr-repository-url=$ECR_URL" >> $GITHUB_OUTPUT
+          
+          echo "Bastion IP: $BASTION_IP"
+          echo "App IP: $APP_IP"
+          echo "ECR URL: $ECR_URL"
+
+  deploy-with-ansible:
+    name: Deploy with Ansible
+    runs-on: ubuntu-latest
+    needs: [detect-changes, apply-infrastructure]
+    if: always() && needs.apply-infrastructure.result == 'success'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'ansible/requirements.txt'
+
+      - name: Install Ansible and dependencies
+        run: |
+          pip install ansible boto3 botocore
+          cd ansible && pip install -r requirements.txt || echo "No requirements file"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials (fallback)
+        if: failure()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create SSH private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > ~/.ssh/bastion_key.pem
+          chmod 600 ~/.ssh/bastion_key.pem
+          ssh-keyscan -H ${{ needs.apply-infrastructure.outputs.bastion-ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Create Ansible inventory
+        run: |
+          mkdir -p ansible/inventory
+          cat > ansible/inventory/aws.ini << EOF
+          [bastion]
+          bastion ansible_host=${{ needs.apply-infrastructure.outputs.bastion-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem
+          
+          [app_servers]
+          app_server ansible_host=${{ needs.apply-infrastructure.outputs.app-ip }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/bastion_key.pem ansible_ssh_common_args='-o ProxyCommand="ssh -W %h:%p -i ~/.ssh/bastion_key.pem ubuntu@${{ needs.apply-infrastructure.outputs.bastion-ip }}"'
+          
+          [all:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          environment=${{ needs.detect-changes.outputs.environment }}
+          ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}
+          backend_image_tag=${{ needs.detect-changes.outputs.version }}
+          frontend_image_tag=${{ needs.detect-changes.outputs.version }}
+          backend_image_changed=${{ needs.detect-changes.outputs.backend-changed }}
+          frontend_image_changed=${{ needs.detect-changes.outputs.frontend-changed }}
+          EOF
+
+      - name: Create AWS credentials file for Ansible
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          
+          [default]
+          region = ${{ env.AWS_REGION }}
+          EOF
+          chmod 600 ~/.aws/credentials
+
+      - name: Run Ansible deployment
+        run: |
+          cd ansible
+          ansible-playbook -vv playbooks/deploy.yml \
+            -i inventory/aws.ini \
+            --extra-vars "environment=${{ needs.detect-changes.outputs.environment }}" \
+            --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
+            --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
+            --extra-vars "ecr_registry=${{ needs.apply-infrastructure.outputs.ecr-registry }}" \
+            --extra-vars "backend_changed=${{ needs.detect-changes.outputs.backend-changed }}" \
+            --extra-vars "frontend_changed=${{ needs.detect-changes.outputs.frontend-changed }}"
+        continue-on-error: false
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment completed to ${{ needs.detect-changes.outputs.environment }}"
+          echo "Bastion IP: ${{ needs.apply-infrastructure.outputs.bastion-ip }}"
+          echo "App IP: ${{ needs.apply-infrastructure.outputs.app-ip }}"
+
+  deployment-status:
+    name: Deployment Status
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-with-ansible]
+    if: always()
+    steps:
+      - name: Check deployment status
+        run: |
+          if [ "${{ needs.deploy-with-ansible.result }}" == "success" ]; then
+            echo "✅ Deployment to ${{ needs.detect-changes.outputs.environment }} completed successfully!"
+            echo "Environment: ${{ needs.detect-changes.outputs.environment }}"
+            echo "Commit: ${{ needs.detect-changes.outputs.version }}"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi

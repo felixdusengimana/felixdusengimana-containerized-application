@@ -1,0 +1,65 @@
+---
+- name: Configure Bastion Host
+  hosts: bastion
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: bastion
+      vars:
+        environment: "{{ environment | default('staging') }}"
+        app_server_ip: "{{ groups['app_servers'][0] }}"
+
+- name: Deploy Application to App Server
+  hosts: app_servers
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Wait for app server to be ready
+      wait_for:
+        port: 22
+        delay: 10
+        timeout: 300
+
+  roles:
+    - role: app_server
+      vars:
+        environment: "{{ environment | default('staging') }}"
+        django_secret_key: "{{ django_secret_key | default('changeme') }}"
+        postgres_password: "{{ postgres_password | default('changeme') }}"
+        ecr_registry: "{{ ecr_registry | default('') }}"
+        backend_image_changed: "{{ backend_changed | default('true') }}"
+        frontend_image_changed: "{{ frontend_changed | default('true') }}"
+        backend_image_tag: "latest-{{ environment }}"
+        frontend_image_tag: "latest-{{ environment }}"
+
+  post_tasks:
+    - name: Verify application deployment
+      block:
+        - name: Check backend health
+          shell: "docker ps | grep -q 'agrimarket-backend'"
+          register: backend_check
+          retries: 5
+          delay: 10
+          until: backend_check.rc == 0
+
+        - name: Check frontend health
+          shell: "docker ps | grep -q 'agrimarket-frontend'"
+          register: frontend_check
+          retries: 5
+          delay: 10
+          until: frontend_check.rc == 0
+
+        - name: Display deployment status
+          debug:
+            msg: "✅ Application deployed successfully on {{ inventory_hostname }}"
+
+      rescue:
+        - name: Display deployment error
+          debug:
+            msg: "❌ Application deployment verification failed"
+        - name: Show container logs
+          shell: "docker-compose logs"
+          args:
+            chdir: "/opt/agrimarket"

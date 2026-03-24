@@ -1,0 +1,58 @@
+---
+- name: Bastion | Update system packages
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Bastion | Verify Docker is installed and running
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Bastion | Verify Docker Compose is installed
+  shell: "docker compose --version"
+  register: docker_compose_version
+  changed_when: false
+  failed_when: docker_compose_version.rc != 0
+
+- name: Bastion | Display Docker info
+  debug:
+    msg:
+      - "Bastion host is ready for deployment"
+      - "Docker version: {{ docker_compose_version.stdout }}"
+
+- name: Bastion | Configure SSH for app server forwarding
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    block: |
+      AllowAgentForwarding yes
+      GatewayPorts clientspecified
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - APP SERVER FORWARDING"
+  notify: restart ssh
+
+- name: Bastion | Ensure ubuntu user can use docker
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes
+
+- name: Bastion | Create application deployment directory
+  file:
+    path: /opt/agrimarket
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: 0755
+
+- name: Bastion | Display Bastion readiness status
+  debug:
+    msg: |
+      🚀 Bastion host ({{ inventory_hostname }}) is ready!
+      SSH Forwarding enabled for app server access
+
+handlers:
+  - name: restart ssh
+    service:
+      name: ssh
+      state: restarted

@@ -60,6 +60,7 @@ config/local.py
 *.key
 .ssh/
 !.ssh/.gitkeep
+terraform/bastion_key.pem*
 
 # Logs
 *.log
@@ -104,6 +105,18 @@ coverage.xml
 .terraform/
 .terraform.lock.hcl
 terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+!terraform/terraform.tfvars.example
+!terraform/prod.tfvars
+
+# Ansible
+ansible/inventory/aws.ini
+ansible/.ansible-config
+ansible/roles/**/.gitkeep
+*.pyc
+__pycache__/
+.ansible/
+ansible/roles/**/templates/generated
 
 # OS
 .DS_Store
@@ -134,3 +147,7 @@ yarn-error.log
 # Project specific
 uploads/
 temp_files/
+
+# local data
+PIPELINE_GUIDE.md
+SECRETS_GUIDE.md
