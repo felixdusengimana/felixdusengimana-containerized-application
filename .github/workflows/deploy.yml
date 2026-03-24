@@ -14,6 +14,14 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
       environment:
         description: 'Environment to deploy to'
         required: true
@@ -48,8 +56,13 @@ jobs:
         id: changes
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "backend=true" >> $GITHUB_OUTPUT
-            echo "frontend=true" >> $GITHUB_OUTPUT
+            if [ "${{ github.event.inputs.action }}" == "destroy" ]; then
+              echo "backend=false" >> $GITHUB_OUTPUT
+              echo "frontend=false" >> $GITHUB_OUTPUT
+            else
+              echo "backend=true" >> $GITHUB_OUTPUT
+              echo "frontend=true" >> $GITHUB_OUTPUT
+            fi
           else
             git diff --name-only origin/main..HEAD || git diff --name-only HEAD~1 HEAD || echo "No previous commit"
             
@@ -183,6 +196,7 @@ jobs:
     name: Plan & Apply Terraform
     runs-on: ubuntu-latest
     needs: detect-changes
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action != 'destroy'
     permissions:
       contents: read
       id-token: write
@@ -214,53 +228,18 @@ jobs:
           chmod 600 terraform/bastion_key.pem
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=agrimarket/${{ needs.detect-changes.outputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
         working-directory: terraform
 
       - name: Terraform Validate
         run: terraform validate
         working-directory: terraform
-
-      - name: Import Existing AWS Resources
-        run: |
-          echo "🔗 Importing existing AWS resources into Terraform state..."
-          
-          # Import IAM Role
-          echo "  → IAM Role: agrimarket-ec2-role"
-          terraform import module.compute.aws_iam_role.ec2_role agrimarket-ec2-role 2>&1 || true
-          
-          # Import ECR Repositories
-          echo "  → ECR Repository: agrimarket-backend"
-          terraform import module.compute.aws_ecr_repository.backend agrimarket-backend 2>&1 || true
-          
-          echo "  → ECR Repository: agrimarket-frontend"
-          terraform import module.compute.aws_ecr_repository.frontend agrimarket-frontend 2>&1 || true
-          
-          # Find and import VPC
-          echo "  → Finding existing VPC..."
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=agrimarket" --query 'Vpcs[0].VpcId' --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-          
-          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-            echo "  → VPC: $VPC_ID"
-            terraform import module.vpc.aws_vpc.main "$VPC_ID" 2>&1 || true
-          else
-            echo "  ⚠️  No existing VPC found with tag Project=agrimarket (will be created)"
-          fi
-          
-          echo "✓ Import complete"
-        working-directory: terraform
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Terraform Refresh State
-        run: |
-          echo "🔄 Syncing state with existing AWS resources..."
-          terraform apply -refresh-only -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color 2>&1
-          echo "✓ State synced"
-        working-directory: terraform
-        continue-on-error: true
 
       - name: Terraform Plan with Drift Detection
         id: plan
@@ -276,13 +255,13 @@ jobs:
             cat tfplan.txt
             exit 1
           else
-            echo "::notice::✓ No infrastructure changes needed (state synchronized)"
+            echo "::notice::✓ No infrastructure changes needed"
           fi
           cat tfplan.txt
         working-directory: terraform
 
       - name: Terraform Apply
-        if: steps.plan.outputs.exitcode == 0 || steps.plan.outputs.exitcode == 2
+        if: steps.plan.outputs.exitcode == 2
         run: |
           terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
         working-directory: terraform
@@ -304,12 +283,53 @@ jobs:
           echo "ECR: $ECR_REGISTRY"
         working-directory: terraform
 
+  destroy-infrastructure:
+    name: Destroy Terraform Infrastructure
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.0
+          terraform_wrapper: false
+
+      - name: Terraform Init (Remote State)
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=agrimarket/${{ needs.detect-changes.outputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+        working-directory: terraform
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy -auto-approve -lock-timeout=20m -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
+        working-directory: terraform
+
   deploy-with-ansible:
     name: Deploy with Ansible
     runs-on: ubuntu-latest
     needs: [detect-changes, build-backend, build-frontend, plan-infrastructure]
     if: |
       always() &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.action != 'destroy') &&
       (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped') &&
       (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped') &&
       (needs.plan-infrastructure.result == 'success')
@@ -401,12 +421,19 @@ jobs:
   deployment-status:
     name: Deployment Status
     runs-on: ubuntu-latest
-    needs: [detect-changes, deploy-with-ansible]
+    needs: [detect-changes, deploy-with-ansible, destroy-infrastructure]
     if: always()
     steps:
       - name: Check deployment status
         run: |
-          if [ "${{ needs.deploy-with-ansible.result }}" == "success" ]; then
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.action }}" == "destroy" ]; then
+            if [ "${{ needs.destroy-infrastructure.result }}" == "success" ]; then
+              echo "✅ Infrastructure destroyed successfully in ${{ needs.detect-changes.outputs.environment }}"
+            else
+              echo "⚠️ Destroy status: ${{ needs.destroy-infrastructure.result }}"
+              exit 1
+            fi
+          elif [ "${{ needs.deploy-with-ansible.result }}" == "success" ]; then
             echo "✅ Deployment to ${{ needs.detect-changes.outputs.environment }} completed successfully!"
             echo "Environment: ${{ needs.detect-changes.outputs.environment }}"
             echo "Commit: ${{ needs.detect-changes.outputs.version }}"

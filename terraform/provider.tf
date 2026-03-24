@@ -8,14 +8,15 @@ terraform {
     }
   }
 
-  # Uncomment the following to use S3 backend for remote state
-  # backend "s3" {
-  #   bucket         = "your-terraform-state-bucket"
-  #   key            = "agrimarket/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "terraform-locks"
-  # }
+  backend "s3" {
+    # Backend config values will be provided via -b ackend-config flags in CI/CD
+    # Configuration:
+    # - bucket: S3 bucket for state
+    # - key: path within bucket (e.g., agrimarket/staging/terraform.tfstate)
+    # - region: AWS region (e.g., us-east-1)
+    # - encrypt: true for server-side encryption
+    # - dynamodb_table: DynamoDB table for state locking
+  }
 }
 
 provider "aws" {
