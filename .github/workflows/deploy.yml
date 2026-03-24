@@ -249,12 +249,20 @@ jobs:
           path: terraform/tfplan
           retention-days: 1
 
+      - name: Upload Terraform Lock File
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-lock-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/.terraform.lock.hcl
+          retention-days: 1
+
       - name: Upload Terraform State
         uses: actions/upload-artifact@v4
         with:
           name: tfstate-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/.terraform
+          path: terraform/terraform.tfstate
           retention-days: 1
+        continue-on-error: true
 
   apply-infrastructure:
     name: Apply Terraform
@@ -303,11 +311,37 @@ jobs:
           name: tfplan-${{ needs.detect-changes.outputs.environment }}
           path: terraform/
 
+      - name: Download Terraform Lock File
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-lock-${{ needs.detect-changes.outputs.environment }}
+          path: terraform/
+        continue-on-error: true
+
       - name: Download Terraform State
         uses: actions/download-artifact@v4
         with:
           name: tfstate-${{ needs.detect-changes.outputs.environment }}
           path: terraform/
+        continue-on-error: true
+
+      - name: Restore Terraform Files
+        run: |
+          cd terraform
+          echo "Checking Terraform artifacts..."
+          
+          if [ -f terraform.tfstate ]; then
+            echo "✓ State file restored"
+            ls -lh terraform.tfstate
+          else
+            echo "⚠ State file not found (first deployment)"
+          fi
+          
+          if [ -f .terraform.lock.hcl ]; then
+            echo "✓ Lock file restored"
+          else
+            echo "ℹ Lock file not found (will be regenerated)"
+          fi
 
       - name: Terraform Apply
         run: |
