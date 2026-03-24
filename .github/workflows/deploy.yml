@@ -222,25 +222,9 @@ jobs:
         id: plan
         run: |
           cd terraform
-          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}" -out=tfplan
+          terraform plan -var="environment=${{ needs.detect-changes.outputs.environment }}"
           echo "status=success" >> $GITHUB_OUTPUT
         continue-on-error: true
-
-      - name: Extract Terraform Outputs (for reference)
-        id: output
-        run: |
-          cd terraform
-          terraform show tfplan | grep -E "bastion|app-ip" || echo "outputs not available yet"
-          # These will be available after apply
-          echo "bastion-ip=pending" >> $GITHUB_OUTPUT
-          echo "app-ip=pending" >> $GITHUB_OUTPUT
-
-      - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/tfplan
-          retention-days: 1
 
       - name: Upload Terraform Lock File
         uses: actions/upload-artifact@v4
@@ -290,12 +274,6 @@ jobs:
           cd terraform
           rm -f tfplan tfplan.json
 
-      - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-${{ needs.detect-changes.outputs.environment }}
-          path: terraform/
-
       - name: Download Terraform Lock File
         uses: actions/download-artifact@v4
         with:
@@ -324,7 +302,7 @@ jobs:
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -auto-approve tfplan
+          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}"
 
       - name: Get Terraform Outputs
         id: outputs
