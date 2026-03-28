@@ -87,19 +87,6 @@ resource "aws_instance" "app" {
   }
 }
 
-# Elastic IP for App Server
-resource "aws_eip" "app" {
-  instance = aws_instance.app.id
-  domain   = "vpc"
-
-  tags = {
-    Name        = "${var.project_name}-app-eip"
-    Environment = var.environment
-  }
-
-  depends_on = [var.internet_gateway_id]
-}
-
 # ECR Repository
 resource "aws_ecr_repository" "backend" {
   name                 = "${var.project_name}-backend"
