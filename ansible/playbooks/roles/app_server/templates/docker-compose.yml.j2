@@ -21,7 +21,7 @@ services:
       - agrimarket-network
 
   backend:
-    image: {{ backend_image_url }}:{{ backend_image_tag }}
+    image: {{ backend_image_url }}:latest-{{ deploy_environment }}
     container_name: agrimarket-backend
     restart: always
     environment:
@@ -51,7 +51,7 @@ services:
       - agrimarket-network
 
   frontend:
-    image: {{ frontend_image_url }}:{{ frontend_image_tag }}
+    image: {{ frontend_image_url }}:latest-{{ deploy_environment }}
     container_name: agrimarket-frontend
     restart: always
     environment:
