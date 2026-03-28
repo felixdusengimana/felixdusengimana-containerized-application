@@ -381,8 +381,15 @@ jobs:
         run: |
           mkdir -p ansible/inventory
           
-          # Get the full path to the SSH key
-          SSH_KEY_PATH="$(cd .ssh && pwd)/bastion_key.pem"
+          # Get the full path to the SSH key (use $HOME/.ssh not ./.ssh)
+          SSH_KEY_PATH="$HOME/.ssh/bastion_key.pem"
+          
+          # Verify SSH key exists
+          if [ ! -f "$SSH_KEY_PATH" ]; then
+            echo "ERROR: SSH key not found at $SSH_KEY_PATH"
+            ls -la ~/.ssh/ || echo "~/.ssh directory does not exist"
+            exit 1
+          fi
           
           cat > ansible/inventory/aws.ini << 'EOFINI'
           [bastion_hosts]
@@ -428,7 +435,7 @@ jobs:
       - name: Verify Ansible setup
         run: |
           echo "=== SSH Key ==="
-          SSH_KEY_PATH="$(cd .ssh && pwd)/bastion_key.pem"
+          SSH_KEY_PATH="$HOME/.ssh/bastion_key.pem"
           if [ -f "$SSH_KEY_PATH" ]; then
             echo "✓ SSH key exists"
             ls -lh "$SSH_KEY_PATH"
