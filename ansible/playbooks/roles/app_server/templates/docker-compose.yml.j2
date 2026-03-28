@@ -1,77 +1,87 @@
-version: '3.9'
-
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: agrimarket-postgres
-    environment:
-      POSTGRES_DB: agrimarket
-      POSTGRES_USER: agrimarket
-      POSTGRES_PASSWORD: {{ postgres_password }}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agrimarket"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - agrimarket-network
-
   backend:
     image: {{ backend_image_url }}:latest-{{ deploy_environment }}
     container_name: agrimarket-backend
-    restart: always
-    environment:
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=agrimarket
-      - DB_USER=agrimarket
-      - DB_PASSWORD={{ postgres_password }}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - SECRET_KEY={{ django_secret_key }}
-      - DEBUG=False
-      - ENVIRONMENT={{ deploy_environment }}
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY={{ django_secret_key }}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend,{{ app_server_private_ip }}
+      - DATABASE_URL=postgresql://postgres:{{ postgres_password }}@db:5432/agrimarketdb
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_PASSWORD={{ postgres_password }}
+      - DJANGO_SUPERUSER_EMAIL=admin@agrimarket.local
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://{{ app_server_private_ip }}:3000,http://{{ app_server_private_ip }}:8000
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - ./static:/app/static
-      - ./media:/app/media
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/products/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - ./backend:/app
     networks:
       - agrimarket-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "python", "manage.py", "check" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
 
   frontend:
     image: {{ frontend_image_url }}:latest-{{ deploy_environment }}
     container_name: agrimarket-frontend
-    restart: always
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    depends_on:
-      - backend
     ports:
       - "3000:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://{{ app_server_private_ip }}:8000/api
+    volumes: []
     networks:
       - agrimarket-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
-volumes:
-  postgres_data:
-    driver: local
+  db:
+    image: postgres:15-alpine
+    container_name: agrimarket-postgres
+    environment:
+      - POSTGRES_DB=agrimarketdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD={{ postgres_password }}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - agrimarket-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 networks:
   agrimarket-network:
     driver: bridge
+    name: agrimarket-network
+volumes:
+  db_data:
+    driver: local
