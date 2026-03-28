@@ -23,4 +23,5 @@ module "compute" {
   app_instance_type         = var.app_instance_type
   bastion_volume_size       = var.bastion_volume_size
   app_volume_size           = var.app_volume_size
+  bastion_public_key        = var.bastion_public_key
 }

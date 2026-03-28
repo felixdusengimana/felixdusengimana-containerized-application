@@ -15,6 +15,17 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] # Canonical
 }
 
+# SSH Key Pair for EC2 instances
+resource "aws_key_pair" "bastion" {
+  key_name   = "${var.project_name}-bastion-key"
+  public_key = var.bastion_public_key
+
+  tags = {
+    Name        = "${var.project_name}-bastion-key"
+    Environment = var.environment
+  }
+}
+
 # User data script for Docker installation
 data "template_file" "docker_install" {
   template = file("${path.module}/user_data.sh")
@@ -26,6 +37,7 @@ resource "aws_instance" "bastion" {
   instance_type          = var.bastion_instance_type
   subnet_id              = var.public_subnet_ids[0]
   vpc_security_group_ids = [var.bastion_security_group_id]
+  key_name               = aws_key_pair.bastion.key_name
   user_data              = data.template_file.docker_install.rendered
 
   root_block_device {

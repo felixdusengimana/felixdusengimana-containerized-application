@@ -54,3 +54,9 @@ variable "enable_monitoring" {
   type        = bool
   default     = true
 }
+
+variable "bastion_public_key" {
+  description = "SSH public key for bastion host (ssh-rsa format)"
+  type        = string
+  sensitive   = true
+}

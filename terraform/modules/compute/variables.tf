@@ -61,3 +61,8 @@ variable "app_volume_size" {
   type        = number
   default     = 30
 }
+
+variable "bastion_public_key" {
+  description = "SSH public key for bastion host (ssh-rsa format)"
+  type        = string
+}

@@ -225,6 +225,10 @@ jobs:
           mkdir -p terraform/
           echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > terraform/bastion_key.pem
           chmod 600 terraform/bastion_key.pem
+          
+          # Extract public key from private key
+          ssh-keygen -y -f terraform/bastion_key.pem > terraform/bastion_key.pub
+          echo "PUBLIC_KEY=$(cat terraform/bastion_key.pub)" >> $GITHUB_ENV
 
       - name: Terraform Init
         run: |
@@ -244,7 +248,10 @@ jobs:
         id: plan
         run: |
           exit_code=0
-          terraform plan -detailed-exitcode -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color > tfplan.txt 2>&1 || exit_code=$?
+          terraform plan -detailed-exitcode \
+            -var="environment=${{ needs.detect-changes.outputs.environment }}" \
+            -var="bastion_public_key=${{ env.PUBLIC_KEY }}" \
+            -no-color > tfplan.txt 2>&1 || exit_code=$?
           echo "exitcode=$exit_code" >> $GITHUB_OUTPUT
           
           if [ $exit_code -eq 2 ]; then
@@ -262,7 +269,10 @@ jobs:
       - name: Terraform Apply
         if: steps.plan.outputs.exitcode == 2
         run: |
-          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
+          terraform apply -auto-approve \
+            -var="environment=${{ needs.detect-changes.outputs.environment }}" \
+            -var="bastion_public_key=${{ env.PUBLIC_KEY }}" \
+            -no-color
         working-directory: terraform
 
       - name: Get Terraform Outputs
