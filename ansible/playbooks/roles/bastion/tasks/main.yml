@@ -75,7 +75,7 @@
     group: root
     mode: 0644
   vars:
-    app_server_private_ip: "10.0.172.212"
+    app_server_private_ip: "{{ app_server_private_ip }}"
 
 - name: Bastion | Start and enable nginx
   service:

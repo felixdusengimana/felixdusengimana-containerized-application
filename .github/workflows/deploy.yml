@@ -570,7 +570,8 @@ jobs:
             --extra-vars "backend_image_tag=${{ needs.detect-changes.outputs.version }}" \
             --extra-vars "frontend_image_tag=${{ needs.detect-changes.outputs.version }}" \
             --extra-vars "backend_changed=${{ needs.detect-changes.outputs.backend-changed }}" \
-            --extra-vars "frontend_changed=${{ needs.detect-changes.outputs.frontend-changed }}"
+            --extra-vars "frontend_changed=${{ needs.detect-changes.outputs.frontend-changed }}" \
+            --extra-vars "app_server_private_ip=${{ needs.plan-infrastructure.outputs.app-ip }}"
         continue-on-error: false
 
       - name: Verify deployment
