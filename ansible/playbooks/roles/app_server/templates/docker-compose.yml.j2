@@ -7,12 +7,12 @@ services:
     environment:
       - DEBUG=False
       - SECRET_KEY={{ django_secret_key }}
-      - ALLOWED_HOSTS=localhost,127.0.0.1,backend,{{ app_server_private_ip }}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend,{{ app_server_private_ip }},34.230.223.6
       - DATABASE_URL=postgresql://postgres:{{ postgres_password }}@db:5432/agrimarketdb
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_PASSWORD={{ postgres_password }}
       - DJANGO_SUPERUSER_EMAIL=admin@agrimarket.local
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://{{ app_server_private_ip }}:3000,http://{{ app_server_private_ip }}:8000
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://{{ app_server_private_ip }}:3000,http://{{ app_server_private_ip }}:8000,http://34.230.223.6:3000,http://34.230.223.6:8000
     depends_on:
       db:
         condition: service_healthy
