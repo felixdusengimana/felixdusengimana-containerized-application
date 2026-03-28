@@ -38,6 +38,17 @@
     group: ubuntu
     mode: 0755
 
+- name: App Server | Get AWS Account ID if ecr_registry is empty
+  shell: "aws sts get-caller-identity --query Account --output text"
+  register: aws_account_id
+  changed_when: false
+  when: ecr_registry is not defined or ecr_registry == "" or ecr_registry is none
+
+- name: App Server | Set ecr_registry from AWS Account ID
+  set_fact:
+    ecr_registry: "{{ aws_account_id.stdout }}.dkr.ecr.us-east-1.amazonaws.com"
+  when: ecr_registry is not defined or ecr_registry == "" or ecr_registry is none
+
 - name: App Server | Login to ECR
   shell: |
     aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {{ ecr_registry }}
