@@ -1,5 +1,5 @@
 """
-Django settings for agrimarket project.
+Django settings for backend agrimarket project.
 """
 
 import os
