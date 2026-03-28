@@ -158,23 +158,23 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.bastion.id]
   }
 
-  # Django backend from Bastion
+  # Django backend from anywhere (internet)
   ingress {
-    from_port       = 8000
-    to_port         = 8000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.bastion.id]
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Nginx frontend from Bastion
+  # Nginx frontend from anywhere (internet)
   ingress {
-    from_port       = 3000
-    to_port         = 3000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.bastion.id]
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # PostgreSQL from Bastion
+  # PostgreSQL from Bastion only (not from internet)
   ingress {
     from_port       = 5432
     to_port         = 5432

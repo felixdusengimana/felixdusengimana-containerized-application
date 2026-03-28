@@ -65,37 +65,3 @@
     msg: |
       🚀 Bastion host ({{ inventory_hostname }}) is ready for {{ deploy_environment }}!
       SSH Forwarding enabled for app server access
-
-- name: Bastion | Install Nginx for reverse proxy
-  apt:
-    name: nginx
-    state: present
-
-- name: Bastion | Create Nginx config for reverse proxy
-  template:
-    src: agrimarket.nginx.j2
-    dest: /etc/nginx/sites-available/agrimarket
-    owner: root
-    group: root
-    mode: 0644
-
-- name: Bastion | Enable Nginx site
-  file:
-    src: /etc/nginx/sites-available/agrimarket
-    dest: /etc/nginx/sites-enabled/agrimarket
-    state: link
-
-- name: Bastion | Disable default Nginx site
-  file:
-    path: /etc/nginx/sites-enabled/default
-    state: absent
-
-- name: Bastion | Test Nginx configuration
-  shell: nginx -t
-  changed_when: false
-
-- name: Bastion | Start and enable Nginx
-  service:
-    name: nginx
-    state: started
-    enabled: yes
