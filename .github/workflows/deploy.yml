@@ -298,46 +298,6 @@ jobs:
           echo "✓ ECR Registry: $ECR_REGISTRY"
         working-directory: terraform
 
-  destroy-infrastructure:
-    name: Destroy Terraform Infrastructure
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.7.0
-          terraform_wrapper: false
-
-      - name: Terraform Init (Remote State)
-        run: |
-          terraform init -reconfigure \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=agrimarket/${{ needs.detect-changes.outputs.environment }}/terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="encrypt=true" \
-            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
-        working-directory: terraform
-
-      - name: Terraform Destroy
-        run: |
-          terraform destroy -auto-approve -lock-timeout=20m -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
-        working-directory: terraform
-
   deploy-with-ansible:
     name: Deploy with Ansible
     runs-on: ubuntu-latest
