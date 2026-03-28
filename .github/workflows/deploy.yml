@@ -226,9 +226,8 @@ jobs:
           echo "${{ secrets.BASTION_SSH_PRIVATE_KEY }}" > terraform/bastion_key.pem
           chmod 600 terraform/bastion_key.pem
           
-          # Extract public key from private key
-          ssh-keygen -y -f terraform/bastion_key.pem > terraform/bastion_key.pub
-          echo "PUBLIC_KEY=$(cat terraform/bastion_key.pub)" >> $GITHUB_ENV
+          # Use public key from GitHub secret
+          echo "PUBLIC_KEY=${{ secrets.BASTION_SSH_PUBLIC_KEY }}" >> $GITHUB_ENV
 
       - name: Terraform Init
         run: |
