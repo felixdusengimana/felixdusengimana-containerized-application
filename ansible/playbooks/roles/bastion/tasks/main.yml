@@ -51,6 +51,17 @@
     name: nginx
     state: present
 
+- name: Bastion | Create nginx temp directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: 0755
+  loop:
+    - /tmp/nginx_proxy
+    - /tmp/nginx_client
+
 - name: Bastion | Disable default nginx site
   file:
     path: /etc/nginx/sites-enabled/default
@@ -91,4 +102,6 @@
     msg: |
       🚀 Bastion host ({{ inventory_hostname }}) is ready for {{ deploy_environment }}!
       Reverse proxy enabled on ports 3000 (frontend) and 8000 (backend)
-      SSH Forwarding enabled for app server access
+      Access from bastion only:
+        - Frontend: http://10.0.172.212:3000 (from bastion)
+        - Backend API: http://10.0.172.212:8000 (from bastion)
