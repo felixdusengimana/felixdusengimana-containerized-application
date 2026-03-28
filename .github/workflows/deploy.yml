@@ -371,6 +371,19 @@ jobs:
             exit 1
           fi
           
+          # Verify it's a valid private key format
+          if ! head -1 ~/.ssh/bastion_key.pem | grep -q "BEGIN"; then
+            echo "::error::SSH key does not appear to be a valid private key"
+            echo "First line: $(head -1 ~/.ssh/bastion_key.pem)"
+            exit 1
+          fi
+          
+          echo "✓ SSH key created and validated"
+          
+          # Add key to SSH agent
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/bastion_key.pem
+          
           # Test bastion connectivity
           echo "Testing connection to bastion: ${{ needs.plan-infrastructure.outputs.bastion-ip }}"
           ssh-keyscan -H ${{ needs.plan-infrastructure.outputs.bastion-ip }} >> ~/.ssh/known_hosts 2>&1 || {
@@ -409,7 +422,13 @@ jobs:
           EOFINI
           
           # Replace placeholders with actual values
+          echo "Replacing placeholders in inventory file..."
           sed -i "s|BASTION_IP_PLACEHOLDER|${{ needs.plan-infrastructure.outputs.bastion-ip }}|g" ansible/inventory/aws.ini
+          if grep -q "BASTION_IP_PLACEHOLDER" ansible/inventory/aws.ini; then
+            echo "ERROR: Failed to replace BASTION_IP"
+            exit 1
+          fi
+          
           sed -i "s|APP_IP_PLACEHOLDER|${{ needs.plan-infrastructure.outputs.app-ip }}|g" ansible/inventory/aws.ini
           sed -i "s|SSH_KEY_PATH_PLACEHOLDER|$SSH_KEY_PATH|g" ansible/inventory/aws.ini
           sed -i "s|DEPLOY_ENV_PLACEHOLDER|${{ needs.detect-changes.outputs.environment }}|g" ansible/inventory/aws.ini
@@ -418,6 +437,8 @@ jobs:
           sed -i "s|FRONTEND_TAG_PLACEHOLDER|${{ needs.detect-changes.outputs.version }}|g" ansible/inventory/aws.ini
           sed -i "s|BACKEND_CHANGED_PLACEHOLDER|${{ needs.detect-changes.outputs.backend-changed }}|g" ansible/inventory/aws.ini
           sed -i "s|FRONTEND_CHANGED_PLACEHOLDER|${{ needs.detect-changes.outputs.frontend-changed }}|g" ansible/inventory/aws.ini
+          
+          echo "✓ Inventory file created successfully"
 
       - name: Create AWS credentials file for Ansible
         run: |
@@ -439,6 +460,9 @@ jobs:
           if [ -f "$SSH_KEY_PATH" ]; then
             echo "✓ SSH key exists"
             ls -lh "$SSH_KEY_PATH"
+            echo ""
+            echo "Key permissions:"
+            stat "$SSH_KEY_PATH"
           else
             echo "✗ SSH key not found at $SSH_KEY_PATH"
             exit 1
@@ -447,13 +471,29 @@ jobs:
           echo ""
           echo "=== Ansible Inventory ==="
           cat ansible/inventory/aws.ini
-
+          
+          echo ""
+          echo "=== Testing SSH connectivity to bastion ==="
+          BASTION_IP="${{ needs.plan-infrastructure.outputs.bastion-ip }}"
+          echo "Attempting SSH connection to ubuntu@$BASTION_IP with key $SSH_KEY_PATH"
+          ssh -vvv -i "$SSH_KEY_PATH" -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$BASTION_IP "echo 'SSH connection successful'" || {
+            echo "WARNING: SSH connection test failed, but continuing to Ansible..."
+            echo "Ansible will attempt connection with its own parameters"
+          }
 
       - name: Run Ansible deployment
         run: |
           cd ansible
-          ansible-playbook -vv playbooks/deploy.yml \
+          
+          # Export SSH key path for Ansible
+          SSH_KEY_PATH="$HOME/.ssh/bastion_key.pem"
+          
+          # Run with extra SSH debugging
+          ANSIBLE_SSH_RETRIES=5 \
+          ANSIBLE_HOST_KEY_CHECKING=False \
+          ansible-playbook -vvv playbooks/deploy.yml \
             -i inventory/aws.ini \
+            --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -vvv' \
             --extra-vars "deploy_environment=${{ needs.detect-changes.outputs.environment }}" \
             --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
             --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
