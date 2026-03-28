@@ -23,6 +23,11 @@ output "app_private_ip" {
   value       = aws_instance.app.private_ip
 }
 
+output "app_public_ip" {
+  description = "App server public IP (Elastic IP)"
+  value       = aws_eip.app.public_ip
+}
+
 output "backend_ecr_repository_url" {
   description = "Backend ECR repository URL"
   value       = aws_ecr_repository.backend.repository_url
