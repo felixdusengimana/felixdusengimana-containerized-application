@@ -103,8 +103,7 @@ jobs:
   build-backend:
     name: Build Backend Image
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.backend-changed == 'true'
+    # needs: detect-changes
     permissions:
       contents: read
       id-token: write
@@ -141,8 +140,7 @@ jobs:
   build-frontend:
     name: Build Frontend Image
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend-changed == 'true'
+    # needs: detect-changes
     permissions:
       contents: read
       id-token: write
@@ -220,17 +218,6 @@ jobs:
             done
           fi
 
-      - name: Import existing IAM role into Terraform state
-        run: |
-          IAM_ROLE_NAME="${{ needs.detect-changes.outputs.environment }}-ec2-role"
-          if aws iam get-role --role-name "agrimarket-ec2-role" 2>/dev/null; then
-            echo "✓ IAM role 'agrimarket-ec2-role' already exists in AWS"
-            echo "Attempting to import into Terraform state..."
-            terraform import 'module.compute.aws_iam_role.ec2_role' agrimarket-ec2-role 2>&1 | grep -E "(ImportedError|already exists)" || echo "✓ Import completed (state may already contain it)"
-          fi
-        continue-on-error: true
-        working-directory: terraform
-
       - name: Create SSH Keys
         run: |
           mkdir -p terraform/
@@ -273,35 +260,40 @@ jobs:
       - name: Terraform Apply
         if: steps.plan.outputs.exitcode == 2
         run: |
-          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color 2>&1 | tee apply-output.txt
-          
-          # Check for specific errors
-          if grep -q "EntityAlreadyExists.*agrimarket-ec2-role" apply-output.txt; then
-            echo "::warning::IAM role already exists. This is expected if Terraform state is out of sync."
-            echo "Run: terraform import 'module.compute.aws_iam_role.ec2_role' agrimarket-ec2-role"
-          fi
-          
-          if grep -q "AddressLimitExceeded" apply-output.txt; then
-            echo "::error::EIP limit reached. Release unused addresses: aws ec2 describe-addresses --region us-east-1 --query 'Addresses[?AssociationId==null]'"
-            exit 1
-          fi
+          terraform apply -auto-approve -var="environment=${{ needs.detect-changes.outputs.environment }}" -no-color
         working-directory: terraform
 
       - name: Get Terraform Outputs
         id: outputs
         run: |
-          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "unknown")
-          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "unknown")
-          ECR_URL=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
-          ECR_REGISTRY=$(echo "$ECR_URL" | cut -d'/' -f1 2>/dev/null || echo "")
+          # Get outputs with better error handling
+          BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
+          APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
+          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
+          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1 2>/dev/null || echo "")
+          
+          # Validate outputs exist
+          if [ -z "$BASTION_IP" ]; then
+            echo "::warning::Bastion public IP is empty, terraform outputs may not be available yet"
+            BASTION_IP="unknown"
+          fi
+          
+          if [ -z "$APP_IP" ]; then
+            echo "::warning::App private IP is empty"
+            APP_IP="unknown"
+          fi
+          
+          if [ -z "$ECR_REGISTRY" ]; then
+            echo "::warning::ECR Registry is empty"
+          fi
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
           echo "ecr-repository-url=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           
-          echo "Bastion: $BASTION_IP"
-          echo "App: $APP_IP"
-          echo "ECR: $ECR_REGISTRY"
+          echo "✓ Bastion IP: $BASTION_IP"
+          echo "✓ App IP: $APP_IP"
+          echo "✓ ECR Registry: $ECR_REGISTRY"
         working-directory: terraform
 
   destroy-infrastructure:
