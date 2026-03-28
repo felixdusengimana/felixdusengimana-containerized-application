@@ -102,6 +102,16 @@
     chdir: /opt/agrimarket
   ignore_errors: true
 
+- name: App Server | Full cleanup - remove all containers and volumes
+  shell: |
+    docker-compose -f /opt/agrimarket/docker-compose.yml down -v --remove-orphans
+    docker container prune -f --filter "label!=persist"
+    docker image prune -f
+  args:
+    chdir: /opt/agrimarket
+  ignore_errors: true
+  tags: cleanup
+
 - name: App Server | Pull and start containers
   shell: "cd /opt/agrimarket && docker-compose up -d"
   args:
