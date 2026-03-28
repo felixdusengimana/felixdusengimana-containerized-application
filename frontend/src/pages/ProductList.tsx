@@ -88,7 +88,7 @@ export default function ProductList() {
   return (
     <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem' }}>
       <h2 style={{ marginBottom: '1.5rem', color: '#111' }}>
-        Products ({products.length}) Directly Changed for presentation
+        Products ({products.length})
       </h2>
       
       <div style={{
