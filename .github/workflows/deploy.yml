@@ -274,15 +274,13 @@ jobs:
       - name: Get Terraform Outputs
         id: outputs
         run: |
-          # Get outputs with better error handling
+          # Get infrastructure IPs from Terraform
           BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
           APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
-          BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
-          ECR_REGISTRY=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
           
-          # Validate outputs exist
+          # Validate infrastructure outputs exist
           if [ -z "$BASTION_IP" ]; then
-            echo "::warning::Bastion public IP is empty, terraform outputs may not be available yet"
+            echo "::warning::Bastion public IP is empty"
             BASTION_IP="unknown"
           fi
           
@@ -291,18 +289,19 @@ jobs:
             APP_IP="unknown"
           fi
           
-          if [ -z "$ECR_REGISTRY" ]; then
-            echo "::warning::ECR Registry is empty"
-          fi
+          # Construct ECR registry from AWS account ID (more reliable than Terraform output)
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
           echo "ecr-registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           
+          echo "=== Terraform Outputs ===" 
           echo "✓ Bastion IP: $BASTION_IP"
           echo "✓ App IP: $APP_IP"
           echo "✓ ECR Registry: $ECR_REGISTRY"
-          echo "✓ Backend ECR: $BACKEND_ECR"
+          echo "✓ AWS Account ID: $AWS_ACCOUNT_ID"
         working-directory: terraform
 
   destroy-infrastructure:
@@ -383,7 +382,7 @@ jobs:
           echo "ECR Registry: $ECR_REGISTRY"
           echo "Backend Image Tag: ${{ needs.detect-changes.outputs.version }}"
           echo "Frontend Image Tag: ${{ needs.detect-changes.outputs.version }}"
-          echo "=======================
+          echo "======================="
           
           if [ "$BASTION_IP" = "unknown" ]; then
             echo "::error::Bastion public IP is unknown. Cannot proceed with deployment."
