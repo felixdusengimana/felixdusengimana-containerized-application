@@ -77,11 +77,24 @@
   vars:
     app_server_private_ip: "{{ app_server_private_ip }}"
 
+- name: Bastion | Validate nginx configuration syntax
+  shell: nginx -t
+  register: nginx_syntax_check
+  failed_when: nginx_syntax_check.rc != 0
+  changed_when: false
+
+- name: Bastion | Stop nginx if already running
+  systemd:
+    name: nginx
+    state: stopped
+  ignore_errors: yes
+
 - name: Bastion | Start and enable nginx
-  service:
+  systemd:
     name: nginx
     state: started
     enabled: yes
+    daemon_reload: yes
 
 - name: Bastion | Ensure ubuntu user can use docker
   user:
