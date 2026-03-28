@@ -35,6 +35,10 @@ resource "aws_iam_role" "ec2_role" {
   tags = {
     Environment = var.environment
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Attach policy for ECR access
