@@ -205,6 +205,14 @@ jobs:
           terraform_version: 1.7.0
           terraform_wrapper: false
 
+      - name: Verify AWS Credentials
+        run: |
+          echo "Verifying AWS credentials are available..."
+          aws sts get-caller-identity || {
+            echo "::error::AWS credentials are not configured!"
+            exit 1
+          }
+
       - name: Clean up unused Elastic IPs (prevent AddressLimitExceeded)
         run: |
           echo "🧹 Checking for unused Elastic IPs..."
@@ -290,8 +298,20 @@ jobs:
           fi
           
           # Construct ECR registry from AWS account ID (more reliable than Terraform output)
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Attempting to get AWS account ID..."
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>&1)
+          
+          if [ -z "$AWS_ACCOUNT_ID" ] || [ "$?" -ne 0 ]; then
+            echo "::error::Failed to get AWS account ID: $AWS_ACCOUNT_ID"
+            exit 1
+          fi
+          
           ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
+          
+          if [ -z "$ECR_REGISTRY" ]; then
+            echo "::error::ECR_REGISTRY is empty!"
+            exit 1
+          fi
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
@@ -376,13 +396,19 @@ jobs:
           APP_IP="${{ needs.plan-infrastructure.outputs.app-ip }}"
           ECR_REGISTRY="${{ needs.plan-infrastructure.outputs.ecr-registry }}"
           
-          echo "=== Terraform Outputs ==="
+          echo "=== Terraform Outputs ===" 
           echo "Bastion IP: $BASTION_IP"
           echo "App IP: $APP_IP"
           echo "ECR Registry: $ECR_REGISTRY"
           echo "Backend Image Tag: ${{ needs.detect-changes.outputs.version }}"
           echo "Frontend Image Tag: ${{ needs.detect-changes.outputs.version }}"
-          echo "======================="
+          echo "=========================================================="
+          
+          # Verify critical values
+          if [ -z "$ECR_REGISTRY" ]; then
+            echo "::error::ECR Registry is EMPTY! Cannot proceed with deployment."
+            exit 1
+          fi
           
           if [ "$BASTION_IP" = "unknown" ]; then
             echo "::error::Bastion public IP is unknown. Cannot proceed with deployment."
@@ -393,6 +419,8 @@ jobs:
             echo "::error::App private IP is unknown. Cannot proceed with deployment."
             exit 1
           fi
+          
+          echo "✓ All required outputs are present and valid"
 
       - name: Set up Python
         uses: actions/setup-python@v4
