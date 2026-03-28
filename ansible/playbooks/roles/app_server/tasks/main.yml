@@ -10,6 +10,7 @@
       - docker.io
       - docker-compose
       - curl
+      - awscli
     state: present
 
 - name: App Server | Ensure Docker service is started and enabled
