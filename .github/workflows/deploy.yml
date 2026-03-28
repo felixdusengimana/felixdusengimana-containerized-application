@@ -278,7 +278,7 @@ jobs:
           BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
           APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
           BACKEND_ECR=$(terraform output -raw backend_ecr_repository_url 2>/dev/null || echo "")
-          ECR_REGISTRY=$(echo "$BACKEND_ECR" | cut -d'/' -f1 2>/dev/null || echo "")
+          ECR_REGISTRY=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
           
           # Validate outputs exist
           if [ -z "$BASTION_IP" ]; then
@@ -297,11 +297,12 @@ jobs:
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
-          echo "ecr-repository-url=$ECR_REGISTRY" >> $GITHUB_OUTPUT
+          echo "ecr-registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           
           echo "✓ Bastion IP: $BASTION_IP"
           echo "✓ App IP: $APP_IP"
           echo "✓ ECR Registry: $ECR_REGISTRY"
+          echo "✓ Backend ECR: $BACKEND_ECR"
         working-directory: terraform
 
   destroy-infrastructure:
@@ -376,9 +377,13 @@ jobs:
           APP_IP="${{ needs.plan-infrastructure.outputs.app-ip }}"
           ECR_REGISTRY="${{ needs.plan-infrastructure.outputs.ecr-registry }}"
           
+          echo "=== Terraform Outputs ==="
           echo "Bastion IP: $BASTION_IP"
           echo "App IP: $APP_IP"
           echo "ECR Registry: $ECR_REGISTRY"
+          echo "Backend Image Tag: ${{ needs.detect-changes.outputs.version }}"
+          echo "Frontend Image Tag: ${{ needs.detect-changes.outputs.version }}"
+          echo "=======================
           
           if [ "$BASTION_IP" = "unknown" ]; then
             echo "::error::Bastion public IP is unknown. Cannot proceed with deployment."
@@ -553,6 +558,8 @@ jobs:
             --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
             --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
             --extra-vars "ecr_registry=${{ needs.plan-infrastructure.outputs.ecr-registry }}" \
+            --extra-vars "backend_image_tag=${{ needs.detect-changes.outputs.version }}" \
+            --extra-vars "frontend_image_tag=${{ needs.detect-changes.outputs.version }}" \
             --extra-vars "backend_changed=${{ needs.detect-changes.outputs.backend-changed }}" \
             --extra-vars "frontend_changed=${{ needs.detect-changes.outputs.frontend-changed }}"
         continue-on-error: false

@@ -1,4 +1,16 @@
 ---
+- name: App Server | Debug - Log all variables
+  debug:
+    msg: |
+      === DEBUG: App Server Variables ===
+      ecr_registry: {{ ecr_registry | default('NOT SET') }}
+      backend_image_tag: {{ backend_image_tag | default('NOT SET') }}
+      frontend_image_tag: {{ frontend_image_tag | default('NOT SET') }}
+      deploy_environment: {{ deploy_environment | default('NOT SET') }}
+      backend_changed: {{ backend_changed | default('NOT SET') }}
+      frontend_changed: {{ frontend_changed | default('NOT SET') }}
+      ================================
+
 - name: App Server | Update system packages
   apt:
     update_cache: yes
