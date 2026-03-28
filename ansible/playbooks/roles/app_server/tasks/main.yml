@@ -97,7 +97,7 @@
   when: (backend_image_changed | bool) or (frontend_image_changed | bool)
 
 - name: App Server | Pull and start containers
-  shell: "cd /opt/agrimarket && docker-compose up -d"
+  shell: "cd /opt/agrimarket && docker-compose up -d --remove-orphans"
   args:
     chdir: /opt/agrimarket
   register: docker_compose_up
