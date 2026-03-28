@@ -1,6 +1,6 @@
 ---
 - name: Configure Bastion Host
-  hosts: bastion
+  hosts: bastion_hosts
   become: yes
   gather_facts: yes
 
