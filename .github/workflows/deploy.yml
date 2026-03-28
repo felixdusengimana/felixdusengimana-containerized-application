@@ -550,6 +550,8 @@ jobs:
           # Run with extra SSH debugging
           ANSIBLE_SSH_RETRIES=5 \
           ANSIBLE_HOST_KEY_CHECKING=False \
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
           ansible-playbook -vvv playbooks/deploy.yml \
             -i inventory/aws.ini \
             --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -vvv' \
