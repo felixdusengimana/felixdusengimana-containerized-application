@@ -89,28 +89,11 @@
     mode: 0600
   no_log: true
 
-- name: App Server | Stop existing containers (if any)
-  shell: "cd /opt/agrimarket && docker-compose down"
+- name: App Server | Stop and clean up all containers
+  shell: "cd /opt/agrimarket && docker-compose down -v --remove-orphans"
   args:
     chdir: /opt/agrimarket
   ignore_errors: true
-  when: (backend_image_changed | bool) or (frontend_image_changed | bool)
-
-- name: App Server | Remove orphan containers and clean up
-  shell: "cd /opt/agrimarket && docker-compose down --remove-orphans"
-  args:
-    chdir: /opt/agrimarket
-  ignore_errors: true
-
-- name: App Server | Full cleanup - remove all containers and volumes
-  shell: |
-    docker-compose -f /opt/agrimarket/docker-compose.yml down -v --remove-orphans
-    docker container prune -f --filter "label!=persist"
-    docker image prune -f
-  args:
-    chdir: /opt/agrimarket
-  ignore_errors: true
-  tags: cleanup
 
 - name: App Server | Pull latest backend and frontend images
   shell: |
