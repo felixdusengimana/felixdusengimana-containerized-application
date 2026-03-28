@@ -75,6 +75,7 @@ resource "aws_instance" "app" {
   instance_type          = var.app_instance_type
   subnet_id              = var.private_subnet_ids[0]
   vpc_security_group_ids = [var.app_security_group_id]
+  key_name               = aws_key_pair.bastion.key_name
   user_data              = data.template_file.docker_install.rendered
 
   root_block_device {
