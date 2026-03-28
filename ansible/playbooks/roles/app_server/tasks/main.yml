@@ -112,8 +112,17 @@
   ignore_errors: true
   tags: cleanup
 
+- name: App Server | Pull latest backend and frontend images
+  shell: |
+    docker pull {{ backend_image_url }}:latest-{{ deploy_environment }}
+    docker pull {{ frontend_image_url }}:latest-{{ deploy_environment }}
+  vars:
+    backend_image_url: "{{ ecr_registry }}/agrimarket-backend"
+    frontend_image_url: "{{ ecr_registry }}/agrimarket-frontend"
+  ignore_errors: true
+
 - name: App Server | Pull and start containers
-  shell: "cd /opt/agrimarket && docker-compose up -d --pull always"
+  shell: "cd /opt/agrimarket && docker-compose up -d"
   args:
     chdir: /opt/agrimarket
   register: docker_compose_up
