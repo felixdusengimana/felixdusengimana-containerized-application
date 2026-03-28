@@ -4,6 +4,20 @@
     update_cache: yes
     cache_valid_time: 3600
 
+- name: App Server | Install Docker and dependencies
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+      - curl
+    state: present
+
+- name: App Server | Ensure Docker service is started and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
 - name: App Server | Verify Docker is installed and running
   service:
     name: docker
