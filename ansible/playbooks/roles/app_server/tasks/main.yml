@@ -147,7 +147,7 @@
       PostgreSQL: {{ inventory_hostname }}:5432
 
 - name: App Server | Show running containers
-  shell: "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+  shell: "docker ps --format 'table {{{{.Names}}}}\t{{{{.Status}}}}'"
   register: running_containers
   changed_when: false
 
