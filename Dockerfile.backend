@@ -21,11 +21,9 @@ RUN pip install --upgrade pip && \
 
 COPY backend/ .
 
-RUN chmod +x /app/entrypoint.sh
-
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:8000/api/prices/ || exit 1
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
