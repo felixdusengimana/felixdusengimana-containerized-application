@@ -281,6 +281,9 @@ jobs:
       - name: Get Terraform Outputs
         id: outputs
         run: |
+          # Construct ECR registry from AWS account ID secret
+          ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com"
+          
           # Get infrastructure IPs from Terraform
           cd terraform
           
@@ -305,6 +308,7 @@ jobs:
           echo "=== Infrastructure Outputs ===" 
           echo "✓ Bastion IP: $BASTION_IP"
           echo "✓ App IP: $APP_IP"
+          echo "✓ ECR Registry: $ECR_REGISTRY"
 
   destroy-infrastructure:
     name: Destroy Infrastructure
