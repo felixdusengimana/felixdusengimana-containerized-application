@@ -187,7 +187,6 @@ jobs:
     outputs:
       bastion-ip: ${{ steps.outputs.outputs.bastion-public-ip }}
       app-ip: ${{ steps.outputs.outputs.app-private-ip }}
-      ecr-registry: ${{ steps.outputs.outputs.ecr-repository-url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -282,11 +281,6 @@ jobs:
       - name: Get Terraform Outputs
         id: outputs
         run: |
-          # Use AWS account ID from secret to construct ECR registry
-          ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com"
-          
-          echo "✓ ECR Registry: $ECR_REGISTRY"
-          
           # Get infrastructure IPs from Terraform
           cd terraform
           
@@ -307,12 +301,10 @@ jobs:
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
-          echo "ecr-registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           
           echo "=== Infrastructure Outputs ===" 
           echo "✓ Bastion IP: $BASTION_IP"
           echo "✓ App IP: $APP_IP"
-          echo "✓ ECR Registry: $ECR_REGISTRY"
 
   destroy-infrastructure:
     name: Destroy Infrastructure
@@ -384,21 +376,15 @@ jobs:
         run: |
           BASTION_IP="${{ needs.plan-infrastructure.outputs.bastion-ip }}"
           APP_IP="${{ needs.plan-infrastructure.outputs.app-ip }}"
-          ECR_REGISTRY="${{ needs.plan-infrastructure.outputs.ecr-registry }}"
+          ECR_REGISTRY="${{ env.REGISTRY }}"
           
-          echo "=== Terraform Outputs ===" 
+          echo "=== Deployment Configuration ===" 
           echo "Bastion IP: $BASTION_IP"
           echo "App IP: $APP_IP"
           echo "ECR Registry: $ECR_REGISTRY"
           echo "Backend Image Tag: ${{ needs.detect-changes.outputs.version }}"
           echo "Frontend Image Tag: ${{ needs.detect-changes.outputs.version }}"
           echo "=========================================================="
-          
-          # Verify critical values
-          if [ -z "$ECR_REGISTRY" ]; then
-            echo "::error::ECR Registry is EMPTY! Cannot proceed with deployment."
-            exit 1
-          fi
           
           if [ "$BASTION_IP" = "unknown" ]; then
             echo "::error::Bastion public IP is unknown. Cannot proceed with deployment."
@@ -410,7 +396,7 @@ jobs:
             exit 1
           fi
           
-          echo "✓ All required outputs are present and valid"
+          echo "✓ All required values are present and valid"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -509,7 +495,7 @@ jobs:
           sed -i "s|APP_IP_PLACEHOLDER|${{ needs.plan-infrastructure.outputs.app-ip }}|g" ansible/inventory/aws.ini
           sed -i "s|SSH_KEY_PATH_PLACEHOLDER|$SSH_KEY_PATH|g" ansible/inventory/aws.ini
           sed -i "s|DEPLOY_ENV_PLACEHOLDER|${{ needs.detect-changes.outputs.environment }}|g" ansible/inventory/aws.ini
-          sed -i "s|ECR_REGISTRY_PLACEHOLDER|${{ needs.plan-infrastructure.outputs.ecr-registry }}|g" ansible/inventory/aws.ini
+          sed -i "s|ECR_REGISTRY_PLACEHOLDER|${{ env.REGISTRY }}|g" ansible/inventory/aws.ini
           sed -i "s|BACKEND_TAG_PLACEHOLDER|${{ needs.detect-changes.outputs.version }}|g" ansible/inventory/aws.ini
           sed -i "s|FRONTEND_TAG_PLACEHOLDER|${{ needs.detect-changes.outputs.version }}|g" ansible/inventory/aws.ini
           sed -i "s|BACKEND_CHANGED_PLACEHOLDER|${{ needs.detect-changes.outputs.backend-changed }}|g" ansible/inventory/aws.ini
@@ -576,7 +562,7 @@ jobs:
             --extra-vars "deploy_environment=${{ needs.detect-changes.outputs.environment }}" \
             --extra-vars "django_secret_key=${{ secrets.DJANGO_SECRET_KEY }}" \
             --extra-vars "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
-            --extra-vars "ecr_registry=${{ needs.plan-infrastructure.outputs.ecr-registry }}" \
+            --extra-vars "ecr_registry=${{ env.REGISTRY }}" \
             --extra-vars "backend_image_tag=${{ needs.detect-changes.outputs.version }}" \
             --extra-vars "frontend_image_tag=${{ needs.detect-changes.outputs.version }}" \
             --extra-vars "backend_changed=${{ needs.detect-changes.outputs.backend-changed }}" \
