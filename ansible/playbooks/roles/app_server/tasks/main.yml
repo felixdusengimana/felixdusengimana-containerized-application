@@ -96,8 +96,14 @@
   ignore_errors: true
   when: (backend_image_changed | bool) or (frontend_image_changed | bool)
 
+- name: App Server | Remove orphan containers and clean up
+  shell: "cd /opt/agrimarket && docker-compose down --remove-orphans"
+  args:
+    chdir: /opt/agrimarket
+  ignore_errors: true
+
 - name: App Server | Pull and start containers
-  shell: "cd /opt/agrimarket && docker-compose up -d --remove-orphans"
+  shell: "cd /opt/agrimarket && docker-compose up -d"
   args:
     chdir: /opt/agrimarket
   register: docker_compose_up
