@@ -9,6 +9,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'ansible/**'
+      - 'terraform/**'
       - 'docker-compose.yml'
       - 'Dockerfile.*'
       - '.github/workflows/deploy.yml'
