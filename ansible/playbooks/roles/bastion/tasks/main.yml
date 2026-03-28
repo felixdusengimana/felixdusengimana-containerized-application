@@ -72,39 +72,8 @@
     state: present
 
 - name: Bastion | Create Nginx config for reverse proxy
-  copy:
-    content: |
-      upstream app_server {
-        server {{ app_server_ip }}:3000;
-      }
-
-      upstream api_server {
-        server {{ app_server_ip }}:8000;
-      }
-
-      server {
-        listen 80 default_server;
-        listen [::]:80 default_server;
-        server_name _;
-
-        # Route /api/* to backend (Django on 8000)
-        location /api/ {
-          proxy_pass http://api_server;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Route everything else to frontend (React on 3000)
-        location / {
-          proxy_pass http://app_server/;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-        }
-      }
+  template:
+    src: agrimarket.nginx.j2
     dest: /etc/nginx/sites-available/agrimarket
     owner: root
     group: root
