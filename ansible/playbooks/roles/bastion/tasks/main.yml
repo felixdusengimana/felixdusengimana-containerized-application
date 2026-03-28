@@ -46,6 +46,41 @@
     marker: "# {mark} ANSIBLE MANAGED BLOCK - APP SERVER FORWARDING"
   notify: restart ssh
 
+- name: Bastion | Install nginx for reverse proxy
+  apt:
+    name: nginx
+    state: present
+
+- name: Bastion | Configure nginx as reverse proxy
+  template:
+    src: nginx-reverse-proxy.conf.j2
+    dest: /etc/nginx/sites-available/agrimarket-proxy
+    owner: root
+    group: root
+    mode: 0644
+  vars:
+    app_server_private_ip: "{{ app_server_ip }}"
+  notify: restart nginx
+
+- name: Bastion | Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/agrimarket-proxy
+    dest: /etc/nginx/sites-enabled/agrimarket-proxy
+    state: link
+  notify: restart nginx
+
+- name: Bastion | Disable default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: restart nginx
+
+- name: Bastion | Start and enable nginx
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
 - name: Bastion | Ensure ubuntu user can use docker
   user:
     name: ubuntu
@@ -64,4 +99,5 @@
   debug:
     msg: |
       🚀 Bastion host ({{ inventory_hostname }}) is ready for {{ deploy_environment }}!
+      Reverse proxy enabled on ports 3000 (frontend) and 8000 (backend)
       SSH Forwarding enabled for app server access
