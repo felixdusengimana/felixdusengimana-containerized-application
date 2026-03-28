@@ -35,7 +35,7 @@ output "frontend_ecr_repository_url" {
 
 output "ecr_repository_url" {
   description = "ECR registry URL (without specific image name)"
-  value       = try(join("", regexall("^([^/]+)/", module.compute.backend_ecr_repository_url)), "")
+  value       = replace(module.compute.backend_ecr_repository_url, "/agrimarket-backend$", "")
 }
 
 output "vpc_id" {
