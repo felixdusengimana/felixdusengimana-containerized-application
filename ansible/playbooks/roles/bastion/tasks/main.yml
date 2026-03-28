@@ -66,11 +66,6 @@
   vars:
     app_server_private_ip: "{{ app_server_ip }}"
 
-- name: Bastion | Validate nginx configuration
-  shell: "nginx -t"
-  register: nginx_test
-  changed_when: false
-
 - name: Bastion | Start and enable nginx
   service:
     name: nginx
