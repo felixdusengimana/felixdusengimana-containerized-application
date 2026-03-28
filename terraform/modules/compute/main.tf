@@ -26,11 +26,6 @@ resource "aws_key_pair" "bastion" {
   }
 }
 
-# User data script for Docker installation
-data "template_file" "docker_install" {
-  template = file("${path.module}/user_data.sh")
-}
-
 # Bastion Host (t3.micro in public subnet)
 resource "aws_instance" "bastion" {
   ami                    = data.aws_ami.ubuntu.id
@@ -38,7 +33,6 @@ resource "aws_instance" "bastion" {
   subnet_id              = var.public_subnet_ids[0]
   vpc_security_group_ids = [var.bastion_security_group_id]
   key_name               = aws_key_pair.bastion.key_name
-  user_data              = data.template_file.docker_install.rendered
 
   root_block_device {
     volume_type           = "gp3"
@@ -76,7 +70,6 @@ resource "aws_instance" "app" {
   subnet_id              = var.private_subnet_ids[0]
   vpc_security_group_ids = [var.app_security_group_id]
   key_name               = aws_key_pair.bastion.key_name
-  user_data              = data.template_file.docker_install.rendered
 
   root_block_device {
     volume_type           = "gp3"
