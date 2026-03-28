@@ -282,11 +282,17 @@ jobs:
       - name: Get Terraform Outputs
         id: outputs
         run: |
+          # Use AWS account ID from secret to construct ECR registry
+          ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com"
+          
+          echo "✓ ECR Registry: $ECR_REGISTRY"
+          
           # Get infrastructure IPs from Terraform
+          cd terraform
+          
           BASTION_IP=$(terraform output -raw bastion_public_ip 2>/dev/null || echo "")
           APP_IP=$(terraform output -raw app_private_ip 2>/dev/null || echo "")
           
-          # Validate infrastructure outputs exist
           if [ -z "$BASTION_IP" ]; then
             echo "::warning::Bastion public IP is empty"
             BASTION_IP="unknown"
@@ -297,32 +303,16 @@ jobs:
             APP_IP="unknown"
           fi
           
-          # Construct ECR registry from AWS account ID (more reliable than Terraform output)
-          echo "Attempting to get AWS account ID..."
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>&1)
-          
-          if [ -z "$AWS_ACCOUNT_ID" ] || [ "$?" -ne 0 ]; then
-            echo "::error::Failed to get AWS account ID: $AWS_ACCOUNT_ID"
-            exit 1
-          fi
-          
-          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
-          
-          if [ -z "$ECR_REGISTRY" ]; then
-            echo "::error::ECR_REGISTRY is empty!"
-            exit 1
-          fi
+          cd ..
           
           echo "bastion-public-ip=$BASTION_IP" >> $GITHUB_OUTPUT
           echo "app-private-ip=$APP_IP" >> $GITHUB_OUTPUT
           echo "ecr-registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           
-          echo "=== Terraform Outputs ===" 
+          echo "=== Infrastructure Outputs ===" 
           echo "✓ Bastion IP: $BASTION_IP"
           echo "✓ App IP: $APP_IP"
           echo "✓ ECR Registry: $ECR_REGISTRY"
-          echo "✓ AWS Account ID: $AWS_ACCOUNT_ID"
-        working-directory: terraform
 
   destroy-infrastructure:
     name: Destroy Infrastructure
