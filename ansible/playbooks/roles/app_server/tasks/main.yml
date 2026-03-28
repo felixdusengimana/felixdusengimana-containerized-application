@@ -113,7 +113,7 @@
   tags: cleanup
 
 - name: App Server | Pull and start containers
-  shell: "cd /opt/agrimarket && docker-compose up -d"
+  shell: "cd /opt/agrimarket && docker-compose up -d --pull always"
   args:
     chdir: /opt/agrimarket
   register: docker_compose_up
